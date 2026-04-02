@@ -76,6 +76,10 @@ export type MonitorSnapshotOptions = {
   recentFillLimit?: number;
 };
 
+export type FormatMonitorSnapshotOptions = {
+  color?: boolean;
+};
+
 export function buildMonitorSnapshot(
   database: DatabaseSync,
   options: MonitorSnapshotOptions = {}
@@ -112,15 +116,27 @@ export function buildMonitorSnapshot(
   };
 }
 
-export function formatMonitorSnapshot(snapshot: MonitorSnapshot): string {
+export function formatMonitorSnapshot(
+  snapshot: MonitorSnapshot,
+  options: FormatMonitorSnapshotOptions = {}
+): string {
+  const color = options.color ?? false;
+  const riskModeText = colorizeRisk(snapshot.risk.mode, color);
+  const flattenPnlText = colorizePnl(snapshot.portfolio.flattenPnlUsd, formatUsd(snapshot.portfolio.flattenPnlUsd), color);
+  const flattenPctText = colorizePnl(
+    snapshot.portfolio.flattenPnlPct,
+    formatPercent(snapshot.portfolio.flattenPnlPct),
+    color
+  );
   const lines = [
-    `Updated: ${snapshot.generatedAt}`,
-    `Risk: ${snapshot.risk.mode}${snapshot.risk.reason ? ` (${snapshot.risk.reason})` : ""}`,
-    `Flatten PnL: ${formatUsd(snapshot.portfolio.flattenPnlUsd)} (${formatPercent(snapshot.portfolio.flattenPnlPct)})`,
+    colorizeLabel(`Updated: ${snapshot.generatedAt}`, color, ANSI_DIM),
+    `Risk: ${riskModeText}${snapshot.risk.reason ? ` (${snapshot.risk.reason})` : ""}`,
+    `Flatten PnL: ${flattenPnlText} (${flattenPctText})`,
     `Net Inventory: ${formatUsd(snapshot.portfolio.netInventoryUsd)}`,
-    `Replay: fills=${snapshot.replay.fills}, score=${formatSeconds(snapshot.replay.scoreSeconds)}, defend=${formatSeconds(snapshot.replay.defendSeconds)}, pointsProxy=${formatDecimal(snapshot.replay.pointsProxy)}, adverse30=${formatBps(snapshot.replay.adverseMove30sBps)}, adverse60=${formatBps(snapshot.replay.adverseMove60sBps)}`,
+    colorizeLabel("Replay metrics:", color, ANSI_CYAN),
+    `fills=${snapshot.replay.fills}, score=${formatSeconds(snapshot.replay.scoreSeconds)}, defend=${formatSeconds(snapshot.replay.defendSeconds)}, pointsProxy=${formatDecimal(snapshot.replay.pointsProxy)}, adverse30=${formatBps(snapshot.replay.adverseMove30sBps)}, adverse60=${formatBps(snapshot.replay.adverseMove60sBps)}`,
     "",
-    "Active markets:"
+    colorizeLabel(`Active markets (${snapshot.activeMarkets.length}):`, color, ANSI_CYAN)
   ];
 
   if (snapshot.activeMarkets.length === 0) {
@@ -128,7 +144,7 @@ export function formatMonitorSnapshot(snapshot: MonitorSnapshot): string {
   } else {
     for (const market of snapshot.activeMarkets) {
       lines.push(
-        `- ${market.marketId} ${market.state} mode=${market.selectedMode ?? "-"} quote=${formatQuote(
+        `- [${market.state}] ${market.marketId} mode=${market.selectedMode ?? "-"} quote=${formatQuote(
           market.quoteBid,
           market.quoteAsk,
           market.quoteSizeUsd
@@ -137,7 +153,7 @@ export function formatMonitorSnapshot(snapshot: MonitorSnapshot): string {
     }
   }
 
-  lines.push("", "Recent orders:");
+  lines.push("", colorizeLabel(`Recent orders (${snapshot.recentOrders.length}):`, color, ANSI_CYAN));
 
   if (snapshot.recentOrders.length === 0) {
     lines.push("- none");
@@ -151,7 +167,7 @@ export function formatMonitorSnapshot(snapshot: MonitorSnapshot): string {
     }
   }
 
-  lines.push("", "Recent fills:");
+  lines.push("", colorizeLabel(`Recent fills (${snapshot.recentFills.length}):`, color, ANSI_CYAN));
 
   if (snapshot.recentFills.length === 0) {
     lines.push("- none");
@@ -166,6 +182,47 @@ export function formatMonitorSnapshot(snapshot: MonitorSnapshot): string {
   }
 
   return lines.join("\n");
+}
+
+const ANSI_RESET = "\u001b[0m";
+const ANSI_DIM = "\u001b[2m";
+const ANSI_RED = "\u001b[31m";
+const ANSI_YELLOW = "\u001b[33m";
+const ANSI_GREEN = "\u001b[32m";
+const ANSI_CYAN = "\u001b[36m";
+
+function colorizeLabel(text: string, enabled: boolean, ansi: string): string {
+  if (!enabled) {
+    return text;
+  }
+
+  return `${ansi}${text}${ANSI_RESET}`;
+}
+
+function colorizeRisk(mode: string, enabled: boolean): string {
+  if (!enabled) {
+    return mode;
+  }
+
+  switch (mode) {
+    case "Normal":
+      return `${ANSI_GREEN}${mode}${ANSI_RESET}`;
+    case "SoftStop":
+      return `${ANSI_YELLOW}${mode}${ANSI_RESET}`;
+    case "HardStop":
+    case "Catastrophic":
+      return `${ANSI_RED}${mode}${ANSI_RESET}`;
+    default:
+      return mode;
+  }
+}
+
+function colorizePnl(value: number | null, text: string, enabled: boolean): string {
+  if (!enabled || value === null || value === 0) {
+    return text;
+  }
+
+  return `${value < 0 ? ANSI_RED : ANSI_GREEN}${text}${ANSI_RESET}`;
 }
 
 function selectLatestRisk(database: DatabaseSync): LatestRiskRow | null {

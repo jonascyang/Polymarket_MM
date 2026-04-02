@@ -50,7 +50,7 @@ function render(databasePath: string): void {
 
   try {
     const snapshot = buildMonitorSnapshot(database);
-    console.log(formatMonitorSnapshot(snapshot));
+    console.log(formatMonitorSnapshot(snapshot, { color: process.stdout.isTTY }));
   } finally {
     database.close();
   }
