@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildSubscribeMessage,
-  normalizeWalletEvent
+  normalizeWalletEvent,
+  PredictWsClient
 } from "../src/clients/ws-client";
 
 describe("buildSubscribeMessage", () => {
@@ -12,6 +13,41 @@ describe("buildSubscribeMessage", () => {
       requestId: 1,
       params: ["predictOrderbook/123"]
     });
+  });
+
+  it("waits for an opening websocket before sending the subscribe frame", async () => {
+    const listeners = new Map<string, Set<() => void>>();
+    const send = vi.fn();
+    const socket = {
+      readyState: 0,
+      send,
+      addEventListener(type: string, listener: () => void) {
+        const current = listeners.get(type) ?? new Set<() => void>();
+        current.add(listener);
+        listeners.set(type, current);
+      },
+      removeEventListener(type: string, listener: () => void) {
+        listeners.get(type)?.delete(listener);
+      }
+    };
+    const client = new PredictWsClient("wss://ws.predict.fun/ws");
+
+    (
+      client as unknown as {
+        socket: typeof socket;
+      }
+    ).socket = socket;
+
+    const subscription = client.subscribe(1, ["predictOrderbook/123"]);
+
+    expect(send).not.toHaveBeenCalled();
+    socket.readyState = 1;
+    listeners.get("open")?.forEach((listener) => listener());
+    await subscription;
+
+    expect(send).toHaveBeenCalledWith(
+      JSON.stringify(buildSubscribeMessage(1, ["predictOrderbook/123"]))
+    );
   });
 });
 

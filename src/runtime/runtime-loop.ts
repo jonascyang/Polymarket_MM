@@ -636,7 +636,7 @@ export async function createRuntimeLoop(
       subscribedTopics = buildSubscriptionTopics(state);
 
       if (subscribedTopics.length > 0) {
-        state.services.wsClient.subscribe(1, subscribedTopics);
+        await state.services.wsClient.subscribe(1, subscribedTopics);
       }
 
       await syncExecutionState(state, nextShadowOrderId, options.liveExecutor);

@@ -104,7 +104,11 @@ type RuntimeRestClient = Pick<
   "getMarkets" | "getMarketOrderbook" | "getMarketLastSale" | "getOrders" | "getPositions" | "getAccount"
 >;
 
-type RuntimeWsClient = Pick<PredictWsClient, "connect" | "subscribe" | "respondToHeartbeat">;
+type RuntimeWsClient = {
+  connect: PredictWsClient["connect"];
+  subscribe: (requestId: number, topics: string[]) => void | Promise<void>;
+  respondToHeartbeat: PredictWsClient["respondToHeartbeat"];
+};
 
 type RuntimeAuthClient = Pick<PredictAuthClient, "getAuthMessage" | "authenticate">;
 

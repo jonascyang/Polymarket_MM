@@ -61,6 +61,9 @@ export type PredictWalletEvent =
       payload: unknown;
     };
 
+const WS_CONNECTING = 0;
+const WS_OPEN = 1;
+
 export function buildSubscribeMessage(requestId: number, topics: string[]): PredictWsSubscribeMessage {
   return {
     method: "subscribe",
@@ -308,12 +311,48 @@ export class PredictWsClient {
     return socket;
   }
 
-  subscribe(requestId: number, topics: string[]): void {
+  private async waitForOpenSocket(): Promise<WebSocket> {
     if (!this.socket) {
       throw new Error("Predict websocket is not connected");
     }
 
-    this.socket.send(JSON.stringify(buildSubscribeMessage(requestId, topics)));
+    if (this.socket.readyState === WS_OPEN) {
+      return this.socket;
+    }
+
+    if (this.socket.readyState !== WS_CONNECTING) {
+      throw new Error("Predict websocket is not open");
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const handleOpen = (): void => {
+        cleanup();
+        resolve();
+      };
+      const handleError = (): void => {
+        cleanup();
+        reject(new Error("Predict websocket failed to connect"));
+      };
+      const cleanup = (): void => {
+        this.socket?.removeEventListener("open", handleOpen);
+        this.socket?.removeEventListener("error", handleError);
+      };
+
+      this.socket?.addEventListener("open", handleOpen);
+      this.socket?.addEventListener("error", handleError);
+    });
+
+    return this.socket;
+  }
+
+  async subscribe(requestId: number, topics: string[]): Promise<void> {
+    if (!this.socket) {
+      throw new Error("Predict websocket is not connected");
+    }
+
+    const socket = await this.waitForOpenSocket();
+
+    socket.send(JSON.stringify(buildSubscribeMessage(requestId, topics)));
   }
 
   respondToHeartbeat(timestamp: number | string): void {
