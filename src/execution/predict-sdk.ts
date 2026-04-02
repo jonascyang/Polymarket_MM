@@ -25,13 +25,39 @@ export type PredictSdkMarketMetadata = {
   isYieldBearing: boolean;
 };
 
-function decimalToWei(value: number, decimals = 18): bigint {
-  const [whole, fraction = ""] = value.toFixed(decimals).split(".");
-  return BigInt(`${whole}${fraction}`);
+const WEI_PRECISION = 18;
+const WEI_SCALE = 10n ** 18n;
+
+function normalizeDecimalString(value: number): string {
+  if (!Number.isFinite(value)) {
+    throw new Error(`Invalid decimal value: ${value}`);
+  }
+
+  const normalized = value.toString();
+
+  if (normalized.includes("e") || normalized.includes("E")) {
+    return value.toFixed(WEI_PRECISION).replace(/\.?0+$/, "");
+  }
+
+  return normalized;
+}
+
+function decimalStringToWei(value: string, decimals = WEI_PRECISION): bigint {
+  const [wholePart, fractionPart = ""] = value.split(".");
+  const normalizedFraction = `${fractionPart}${"0".repeat(decimals)}`.slice(0, decimals);
+
+  return BigInt(`${wholePart}${normalizedFraction}`);
+}
+
+function decimalToWei(value: number, decimals = WEI_PRECISION): bigint {
+  return decimalStringToWei(normalizeDecimalString(value), decimals);
 }
 
 function getQuantityWei(order: ManagedOrder): bigint {
-  return decimalToWei(order.sizeUsd / order.price);
+  const sizeUsdWei = decimalToWei(order.sizeUsd);
+  const pricePerShareWei = decimalToWei(order.price);
+
+  return (sizeUsdWei * WEI_SCALE) / pricePerShareWei;
 }
 
 export function resolvePrimaryOutcomeTokenId(

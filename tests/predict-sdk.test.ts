@@ -50,4 +50,56 @@ describe("buildLimitCreateOrderBody", () => {
     expect(body.data.order.hash).toMatch(/^0x[a-fA-F0-9]{64}$/);
     expect(body.data.order.signature).toMatch(/^0x[a-fA-F0-9]+$/);
   });
+
+  it("preserves exact ask price precision instead of drifting because of float conversion", async () => {
+    const wallet = Wallet.createRandom();
+    const orderBuilder = await OrderBuilder.make(ChainId.BnbMainnet, wallet, {
+      generateSalt: () => "42"
+    });
+
+    const body = await buildLimitCreateOrderBody({
+      orderBuilder,
+      order: {
+        marketId: 10,
+        side: "ask",
+        price: 0.37,
+        sizeUsd: 6
+      },
+      market: {
+        marketId: 10,
+        feeRateBps: 200,
+        isNegRisk: true,
+        isYieldBearing: true,
+        tokenId: "123"
+      }
+    });
+
+    expect(body.data.pricePerShare).toBe("370000000000000000");
+  });
+
+  it("preserves exact bid price precision for three-decimal quotes", async () => {
+    const wallet = Wallet.createRandom();
+    const orderBuilder = await OrderBuilder.make(ChainId.BnbMainnet, wallet, {
+      generateSalt: () => "42"
+    });
+
+    const body = await buildLimitCreateOrderBody({
+      orderBuilder,
+      order: {
+        marketId: 10,
+        side: "bid",
+        price: 0.122,
+        sizeUsd: 6
+      },
+      market: {
+        marketId: 10,
+        feeRateBps: 200,
+        isNegRisk: true,
+        isYieldBearing: true,
+        tokenId: "123"
+      }
+    });
+
+    expect(body.data.pricePerShare).toBe("122000000000000000");
+  });
 });
