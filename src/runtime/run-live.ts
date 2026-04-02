@@ -1,5 +1,6 @@
 import { loadConfig } from "../config";
 import {
+  createPredictAccountAuthSigner,
   createWalletAuthSigner,
   getJwtTokenFromAuthFlow,
   PredictAuthClient
@@ -18,11 +19,17 @@ async function main(): Promise<void> {
     );
   }
 
+  const authSigner = config.predictAccount
+    ? await createPredictAccountAuthSigner({
+        privateKey: walletPrivateKey,
+        predictAccount: config.predictAccount
+      })
+    : createWalletAuthSigner(walletPrivateKey);
   const bearerToken =
     config.bearerToken ??
     (await getJwtTokenFromAuthFlow(
       new PredictAuthClient(config),
-      createWalletAuthSigner(walletPrivateKey)
+      authSigner
     ));
 
   const liveExecutor = await PredictLiveExecutor.make({

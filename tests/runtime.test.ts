@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Wallet } from "ethers";
-import { createWalletAuthSigner } from "../src/clients/auth-client";
+import {
+  createPredictAccountAuthSigner,
+  createWalletAuthSigner
+} from "../src/clients/auth-client";
 
 import {
   buildLiveMarketMetadataMap,
@@ -31,6 +34,30 @@ describe("getExecutionPolicy", () => {
     expect(await signer.signMessage(message)).toBe(
       await wallet.signMessage(message)
     );
+  });
+
+  it("builds a predict-account auth signer from a privy wallet and deposit address", async () => {
+    const privyWallet = Wallet.createRandom();
+    const predictAccount = Wallet.createRandom().address;
+    const signPredictAccountMessage = vi.fn(async (message: string) => `sig:${message}`);
+    const signer = await createPredictAccountAuthSigner({
+      privateKey: privyWallet.privateKey,
+      predictAccount,
+      builderFactory: async ({ privateKey, predictAccount: configuredAccount }) => {
+        expect(privateKey).toBe(privyWallet.privateKey);
+        expect(configuredAccount).toBe(predictAccount);
+
+        return {
+          signPredictAccountMessage
+        };
+      }
+    });
+
+    expect(signer.signer).toBe(predictAccount);
+    expect(await signer.signMessage("predict-auth-message")).toBe(
+      "sig:predict-auth-message"
+    );
+    expect(signPredictAccountMessage).toHaveBeenCalledWith("predict-auth-message");
   });
 });
 

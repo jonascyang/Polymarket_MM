@@ -16,8 +16,8 @@ Set these variables before running:
 - `PREDICT_MM_DB_PATH`
 - `PREDICT_AUTH_BEARER_TOKEN` (optional, enables private account/orders/positions reads and can be reused by `npm run live`)
 - `PREDICT_RUNTIME_INTERVAL_MS` (optional, polling interval override in milliseconds for the runtime loop)
-- `PREDICT_MM_WALLET_PRIVATE_KEY` (required by `npm run live` for signed live order placement)
-- `PREDICT_MM_PREDICT_ACCOUNT` (optional, passed through to the official SDK when your trading wallet uses a separate predict account)
+- `PREDICT_MM_WALLET_PRIVATE_KEY` (required by `npm run live` for signed live order placement; when using a Predict Account this must be the exported Privy Wallet private key)
+- `PREDICT_MM_PREDICT_ACCOUNT` (optional in config, but required when your trading wallet uses a Predict Account; this must be the Predict Account deposit address)
 
 Private trading routes also require a JWT obtained through the official auth flow documented at:
 
@@ -25,7 +25,12 @@ Private trading routes also require a JWT obtained through the official auth flo
 - [Predict API explorer](https://api.predict.fun/docs)
 
 When no bearer token is preconfigured, the runtime can also obtain a JWT through the official auth flow if a signer callback is injected by the host application.
-`npm run live` now does this automatically from `PREDICT_MM_WALLET_PRIVATE_KEY`; if `PREDICT_AUTH_BEARER_TOKEN` is already set, it reuses that token instead of re-authenticating.
+`npm run live` now does this automatically:
+
+- for EOAs, it signs the auth message with `wallet.signMessage`
+- for Predict Accounts, it instantiates the official SDK with `PREDICT_MM_PREDICT_ACCOUNT` and signs the auth message with `OrderBuilder.signPredictAccountMessage`
+
+If `PREDICT_AUTH_BEARER_TOKEN` is already set, the runtime reuses that token instead of re-authenticating.
 
 ## Scripts
 

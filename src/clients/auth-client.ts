@@ -1,3 +1,4 @@
+import { ChainId, OrderBuilder } from "@predictdotfun/sdk";
 import type { PredictMmConfig } from "../types";
 import { Wallet } from "ethers";
 import { buildApiHeaders, type PredictApiResponse } from "./rest-client";
@@ -23,6 +24,19 @@ export type PredictAuthSigner = {
 
 export type PredictAuthFlowClient = Pick<PredictAuthClient, "getAuthMessage" | "authenticate">;
 
+type PredictAccountMessageSigner = Pick<OrderBuilder, "signPredictAccountMessage">;
+
+export type CreatePredictAccountAuthSignerInput = {
+  privateKey: string;
+  predictAccount: string;
+  chainId?: ChainId;
+  builderFactory?: (input: {
+    privateKey: string;
+    predictAccount: string;
+    chainId: ChainId;
+  }) => Promise<PredictAccountMessageSigner>;
+};
+
 export function createWalletAuthSigner(privateKey: string): PredictAuthSigner {
   const wallet = new Wallet(privateKey);
 
@@ -30,6 +44,33 @@ export function createWalletAuthSigner(privateKey: string): PredictAuthSigner {
     signer: wallet.address,
     signMessage(message: string) {
       return wallet.signMessage(message);
+    }
+  };
+}
+
+async function makePredictAccountOrderBuilder(input: {
+  privateKey: string;
+  predictAccount: string;
+  chainId: ChainId;
+}): Promise<PredictAccountMessageSigner> {
+  return OrderBuilder.make(input.chainId, new Wallet(input.privateKey), {
+    predictAccount: input.predictAccount
+  });
+}
+
+export async function createPredictAccountAuthSigner(
+  input: CreatePredictAccountAuthSignerInput
+): Promise<PredictAuthSigner> {
+  const builder = await (input.builderFactory ?? makePredictAccountOrderBuilder)({
+    privateKey: input.privateKey,
+    predictAccount: input.predictAccount,
+    chainId: input.chainId ?? ChainId.BnbMainnet
+  });
+
+  return {
+    signer: input.predictAccount,
+    signMessage(message: string) {
+      return builder.signPredictAccountMessage(message);
     }
   };
 }
