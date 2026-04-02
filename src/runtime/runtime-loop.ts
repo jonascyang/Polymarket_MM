@@ -545,7 +545,11 @@ export async function createRuntimeLoop(
       message.topic?.startsWith("predictWalletEvents/") &&
       message.data !== undefined
     ) {
-      const event = normalizeWalletEvent(message.topic, message.data);
+      const event = normalizeWalletEvent(
+        message.topic,
+        message.data,
+        buildLiveMarketMetadataMap(state.markets)
+      );
 
       if (event) {
         applyWalletEventToState(state, event);
@@ -595,7 +599,11 @@ export async function createRuntimeLoop(
       message.topic?.startsWith("predictWalletEvents/") &&
       message.data !== undefined
     ) {
-      const event = normalizeWalletEvent(message.topic, message.data);
+      const event = normalizeWalletEvent(
+        message.topic,
+        message.data,
+        buildLiveMarketMetadataMap(state.markets)
+      );
 
       if (event) {
         applyWalletEventToState(state, event);

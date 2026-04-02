@@ -92,4 +92,55 @@ describe("normalizeWalletEvent", () => {
       }
     });
   });
+
+  it("maps complementary-outcome wallet orders back into logical asks", () => {
+    expect(
+      normalizeWalletEvent(
+        "predictWalletEvents/jwt-token",
+        {
+          eventType: "order_opened",
+          marketId: 123,
+          order: {
+            id: "order-2",
+            tokenId: "456",
+            side: 0,
+            pricePerShare: 0.61,
+            remainingSizeUsd: 3
+          }
+        },
+        {
+          123: {
+            marketId: 123,
+            tokenId: "123",
+            complementaryTokenId: "456",
+            feeRateBps: 200,
+            isNegRisk: false,
+            isYieldBearing: false
+          }
+        }
+      )
+    ).toEqual({
+      topic: "predictWalletEvents/jwt-token",
+      kind: "order_opened",
+      marketId: 123,
+      order: {
+        id: "order-2",
+        marketId: 123,
+        side: "ask",
+        price: 0.39,
+        sizeUsd: 3
+      },
+      payload: {
+        eventType: "order_opened",
+        marketId: 123,
+        order: {
+          id: "order-2",
+          tokenId: "456",
+          side: 0,
+          pricePerShare: 0.61,
+          remainingSizeUsd: 3
+        }
+      }
+    });
+  });
 });

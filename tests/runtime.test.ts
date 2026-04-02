@@ -239,6 +239,55 @@ describe("runConfiguredRuntimeOnce", () => {
     });
   });
 
+  it("maps complementary-outcome buy orders back into logical asks", () => {
+    const normalized = normalizeOpenOrder(
+      {
+        id: "order-2",
+        marketId: 10,
+        currency: "USDT",
+        amount: "10000000000000000000",
+        amountFilled: "2000000000000000000",
+        isNegRisk: true,
+        isYieldBearing: true,
+        strategy: "LIMIT",
+        status: "OPEN",
+        rewardEarningRate: 5,
+        order: {
+          salt: "1",
+          maker: "0xmaker",
+          signer: "0xmaker",
+          taker: "0x0000000000000000000000000000000000000000",
+          tokenId: "456",
+          makerAmount: "6000000000000000000",
+          takerAmount: "10000000000000000000",
+          expiration: 9999999999,
+          nonce: "1",
+          feeRateBps: "200",
+          side: 0,
+          signatureType: 0
+        }
+      },
+      {
+        10: {
+          marketId: 10,
+          tokenId: "123",
+          complementaryTokenId: "456",
+          feeRateBps: 200,
+          isNegRisk: true,
+          isYieldBearing: true
+        }
+      }
+    );
+
+    expect(normalized).toEqual({
+      id: "order-2",
+      marketId: 10,
+      side: "ask",
+      price: 0.4,
+      sizeUsd: 3.2
+    });
+  });
+
   it("derives live execution metadata from runtime markets", () => {
     const metadata = buildLiveMarketMetadataMap([
       {
@@ -262,7 +311,8 @@ describe("runConfiguredRuntimeOnce", () => {
         isNegRisk: true,
         isYieldBearing: true,
         feeRateBps: 200,
-        tokenId: "123"
+        tokenId: "123",
+        complementaryTokenId: "456"
       }
     ]);
 
@@ -270,6 +320,7 @@ describe("runConfiguredRuntimeOnce", () => {
       10: {
         marketId: 10,
         tokenId: "123",
+        complementaryTokenId: "456",
         feeRateBps: 200,
         isNegRisk: true,
         isYieldBearing: true

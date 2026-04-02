@@ -2,16 +2,19 @@ import { describe, expect, it } from "vitest";
 import { ChainId, OrderBuilder } from "@predictdotfun/sdk";
 import { Wallet } from "ethers";
 
-import { buildLimitCreateOrderBody, resolvePrimaryOutcomeTokenId } from "../src/execution/predict-sdk";
+import { buildLimitCreateOrderBody, resolveOutcomeTokenIds } from "../src/execution/predict-sdk";
 
-describe("resolvePrimaryOutcomeTokenId", () => {
-  it("prefers the Yes outcome token when available", () => {
+describe("resolveOutcomeTokenIds", () => {
+  it("prefers the Yes outcome token and returns its complementary token", () => {
     expect(
-      resolvePrimaryOutcomeTokenId([
+      resolveOutcomeTokenIds([
         { name: "No", indexSet: 2, onChainId: "456" },
         { name: "Yes", indexSet: 1, onChainId: "123" }
       ])
-    ).toBe("123");
+    ).toEqual({
+      tokenId: "123",
+      complementaryTokenId: "456"
+    });
   });
 });
 
@@ -35,7 +38,8 @@ describe("buildLimitCreateOrderBody", () => {
         feeRateBps: 200,
         isNegRisk: true,
         isYieldBearing: true,
-        tokenId: "123"
+        tokenId: "123",
+        complementaryTokenId: "456"
       }
     });
 
@@ -70,11 +74,14 @@ describe("buildLimitCreateOrderBody", () => {
         feeRateBps: 200,
         isNegRisk: true,
         isYieldBearing: true,
-        tokenId: "123"
+        tokenId: "123",
+        complementaryTokenId: "456"
       }
     });
 
-    expect(body.data.pricePerShare).toBe("370000000000000000");
+    expect(body.data.pricePerShare).toBe("630000000000000000");
+    expect(body.data.order.side).toBe(0);
+    expect(body.data.order.tokenId).toBe("456");
   });
 
   it("preserves exact bid price precision for three-decimal quotes", async () => {
@@ -96,7 +103,8 @@ describe("buildLimitCreateOrderBody", () => {
         feeRateBps: 200,
         isNegRisk: true,
         isYieldBearing: true,
-        tokenId: "123"
+        tokenId: "123",
+        complementaryTokenId: "456"
       }
     });
 

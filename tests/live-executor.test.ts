@@ -49,6 +49,7 @@ describe("PredictLiveExecutor", () => {
         10: {
           marketId: 10,
           tokenId: "123",
+          complementaryTokenId: "456",
           feeRateBps: 200,
           isNegRisk: true,
           isYieldBearing: true
@@ -62,5 +63,61 @@ describe("PredictLiveExecutor", () => {
     expect(createOrder.mock.calls[0]?.[1].data.strategy).toBe("LIMIT");
     expect(createOrder.mock.calls[0]?.[1].data.order.side).toBe(0);
     expect(createOrder.mock.calls[0]?.[1].data.order.tokenId).toBe("123");
+  });
+
+  it("maps logical asks onto complementary outcome buy orders", async () => {
+    const wallet = Wallet.createRandom();
+    const orderBuilder = await OrderBuilder.make(ChainId.BnbMainnet, wallet, {
+      generateSalt: () => "42"
+    });
+    const createOrder = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        code: "CREATED",
+        orderId: "order-2",
+        orderHash: "0xhash"
+      }
+    });
+    const executor = new PredictLiveExecutor({
+      bearerToken: "jwt-token",
+      restClient: {
+        createOrder,
+        removeOrders: vi.fn().mockResolvedValue({
+          success: true,
+          removed: [],
+          noop: []
+        })
+      },
+      orderBuilder
+    });
+
+    await executor.syncCommands(
+      [
+        {
+          type: "create",
+          order: {
+            marketId: 10,
+            side: "ask",
+            price: 0.37,
+            sizeUsd: 6
+          }
+        }
+      ],
+      {
+        10: {
+          marketId: 10,
+          tokenId: "123",
+          complementaryTokenId: "456",
+          feeRateBps: 200,
+          isNegRisk: true,
+          isYieldBearing: true
+        }
+      }
+    );
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder.mock.calls[0]?.[1].data.order.side).toBe(0);
+    expect(createOrder.mock.calls[0]?.[1].data.order.tokenId).toBe("456");
+    expect(createOrder.mock.calls[0]?.[1].data.pricePerShare).toBe("630000000000000000");
   });
 });

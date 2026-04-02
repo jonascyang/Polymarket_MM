@@ -5,7 +5,7 @@ import {
 } from "@predictdotfun/sdk";
 
 import type { PredictOutcome } from "../clients/rest-client";
-import type { ManagedOrder } from "./order-manager";
+import type { ManagedOrder, ManagedOrderSide } from "./order-manager";
 
 export type PredictLimitCreateOrderBody = {
   data: {
@@ -20,9 +20,15 @@ export type PredictLimitCreateOrderBody = {
 export type PredictSdkMarketMetadata = {
   marketId: number;
   tokenId: string;
+  complementaryTokenId: string;
   feeRateBps: number;
   isNegRisk: boolean;
   isYieldBearing: boolean;
+};
+
+export type PredictNormalizedOrder = {
+  side: ManagedOrderSide;
+  price: number;
 };
 
 const WEI_PRECISION = 18;
@@ -75,13 +81,108 @@ export function resolvePrimaryOutcomeTokenId(
   return preferredOutcome.onChainId;
 }
 
+export function resolveOutcomeTokenIds(
+  outcomes: Array<Pick<PredictOutcome, "name" | "onChainId" | "indexSet">>
+): Pick<PredictSdkMarketMetadata, "tokenId" | "complementaryTokenId"> {
+  const tokenId = resolvePrimaryOutcomeTokenId(outcomes);
+  const complementaryTokenId =
+    outcomes.find((outcome) => outcome.onChainId !== tokenId)?.onChainId ?? tokenId;
+
+  return {
+    tokenId,
+    complementaryTokenId
+  };
+}
+
+function normalizePrice(value: number): number {
+  return Number(value.toFixed(6));
+}
+
+function getComplementaryPrice(logicalPrice: number): number {
+  return normalizePrice(1 - logicalPrice);
+}
+
+function resolveExecutionPriceWei(order: ManagedOrder): bigint {
+  const logicalPricePerShareWei = decimalToWei(order.price);
+
+  if (order.side === "bid") {
+    return logicalPricePerShareWei;
+  }
+
+  return WEI_SCALE - logicalPricePerShareWei;
+}
+
+function resolveExecutionTokenId(
+  order: ManagedOrder,
+  market: PredictSdkMarketMetadata
+): string {
+  return order.side === "bid"
+    ? market.tokenId
+    : market.complementaryTokenId;
+}
+
+export function normalizePredictOrderSideAndPrice(input: {
+  tokenId?: string;
+  orderSide: unknown;
+  price: number;
+  market?: PredictSdkMarketMetadata;
+}): PredictNormalizedOrder {
+  let exchangeSide: ManagedOrderSide;
+
+  if (
+    input.orderSide === 0 ||
+    input.orderSide === "0" ||
+    input.orderSide === "bid" ||
+    input.orderSide === "buy" ||
+    input.orderSide === "yes"
+  ) {
+    exchangeSide = "bid";
+  } else if (
+    input.orderSide === 1 ||
+    input.orderSide === "1" ||
+    input.orderSide === "ask" ||
+    input.orderSide === "sell" ||
+    input.orderSide === "no"
+  ) {
+    exchangeSide = "ask";
+  } else {
+    exchangeSide = "bid";
+  }
+
+  if (!input.market || !input.tokenId) {
+    return {
+      side: exchangeSide,
+      price: normalizePrice(input.price)
+    };
+  }
+
+  if (input.tokenId === input.market.tokenId) {
+    return {
+      side: exchangeSide,
+      price: normalizePrice(input.price)
+    };
+  }
+
+  if (input.tokenId === input.market.complementaryTokenId) {
+    return {
+      side: exchangeSide === "bid" ? "ask" : "bid",
+      price: getComplementaryPrice(input.price)
+    };
+  }
+
+  return {
+    side: exchangeSide,
+    price: normalizePrice(input.price)
+  };
+}
+
 export async function buildLimitCreateOrderBody(input: {
   orderBuilder: OrderBuilder;
   order: ManagedOrder;
   market: PredictSdkMarketMetadata;
 }): Promise<PredictLimitCreateOrderBody> {
-  const side = input.order.side === "bid" ? Side.BUY : Side.SELL;
-  const pricePerShareWei = decimalToWei(input.order.price);
+  const side = Side.BUY;
+  const pricePerShareWei = resolveExecutionPriceWei(input.order);
   const amounts = input.orderBuilder.getLimitOrderAmounts({
     side,
     pricePerShareWei,
@@ -89,7 +190,7 @@ export async function buildLimitCreateOrderBody(input: {
   });
   const builtOrder = input.orderBuilder.buildOrder("LIMIT", {
     side,
-    tokenId: input.market.tokenId,
+    tokenId: resolveExecutionTokenId(input.order, input.market),
     makerAmount: amounts.makerAmount,
     takerAmount: amounts.takerAmount,
     feeRateBps: input.market.feeRateBps

@@ -1,4 +1,8 @@
 import type { ManagedOrder, ManagedOrderSide } from "../execution/order-manager";
+import {
+  normalizePredictOrderSideAndPrice,
+  type PredictSdkMarketMetadata
+} from "../execution/predict-sdk";
 
 export type PredictWsSubscribeMessage = {
   method: "subscribe";
@@ -175,17 +179,30 @@ function resolveMarketId(payload: Record<string, unknown>): number | undefined {
 function buildManagedOrder(
   payload: Record<string, unknown>,
   marketId: number,
-  fallbackOrderId?: string
+  fallbackOrderId?: string,
+  market?: PredictSdkMarketMetadata
 ): (ManagedOrder & { id: string }) | undefined {
   const orderId = asString(payload.id) ?? asString(payload.orderId) ?? fallbackOrderId;
-  const side = normalizeSide(payload.side);
-  const price = asNumber(payload.price) ?? asNumber(payload.pricePerShare);
+  const rawSide = payload.side;
+  const rawPrice = asNumber(payload.price) ?? asNumber(payload.pricePerShare);
   const sizeUsd =
     asNumber(payload.remainingSizeUsd) ??
     asNumber(payload.openSizeUsd) ??
     asNumber(payload.sizeUsd);
 
-  if (!orderId || !side || price === undefined || sizeUsd === undefined) {
+  if (!orderId || rawPrice === undefined || sizeUsd === undefined) {
+    return undefined;
+  }
+
+  const normalized = normalizePredictOrderSideAndPrice({
+    tokenId: asString(payload.tokenId),
+    orderSide: rawSide ?? 0,
+    price: rawPrice,
+    market
+  });
+  const side = normalized.side ?? normalizeSide(rawSide);
+
+  if (!side) {
     return undefined;
   }
 
@@ -193,14 +210,15 @@ function buildManagedOrder(
     id: orderId,
     marketId,
     side,
-    price,
+    price: normalized.price,
     sizeUsd
   };
 }
 
 export function normalizeWalletEvent(
   topic: string,
-  payload: unknown
+  payload: unknown,
+  marketsById?: Record<number, PredictSdkMarketMetadata>
 ): PredictWalletEvent | null {
   if (!topic.startsWith("predictWalletEvents/")) {
     return null;
@@ -227,7 +245,12 @@ export function normalizeWalletEvent(
   switch (kind) {
     case "order_opened":
     case "order_updated": {
-      const order = buildManagedOrder(orderRecord ?? record, marketId, orderId);
+      const order = buildManagedOrder(
+        orderRecord ?? record,
+        marketId,
+        orderId,
+        marketsById?.[marketId]
+      );
       return order
         ? {
             topic,
@@ -253,8 +276,18 @@ export function normalizeWalletEvent(
         : null;
     }
     case "fill": {
-      const side = normalizeSide(record.side ?? orderRecord?.side);
-      const price = asNumber(record.price ?? record.pricePerShare ?? orderRecord?.price);
+      const rawPrice = asNumber(record.price ?? record.pricePerShare ?? orderRecord?.price);
+      const normalizedPlacement =
+        rawPrice === undefined
+          ? undefined
+          : normalizePredictOrderSideAndPrice({
+              tokenId: asString(record.tokenId ?? orderRecord?.tokenId),
+              orderSide: record.side ?? orderRecord?.side ?? 0,
+              price: rawPrice,
+              market: marketsById?.[marketId]
+            });
+      const side = normalizedPlacement?.side ?? normalizeSide(record.side ?? orderRecord?.side);
+      const price = normalizedPlacement?.price ?? rawPrice;
       const sizeUsd = asNumber(record.sizeUsd ?? record.fillSizeUsd);
       const inventoryDeltaUsd = asNumber(
         record.inventoryDeltaUsd ?? record.positionDeltaUsd
@@ -263,7 +296,8 @@ export function normalizeWalletEvent(
       const order = buildManagedOrder(
         orderRecord ?? record,
         marketId,
-        orderId ?? asString(orderRecord?.id)
+        orderId ?? asString(orderRecord?.id),
+        marketsById?.[marketId]
       );
 
       const normalizedEvent: PredictWalletEvent = {

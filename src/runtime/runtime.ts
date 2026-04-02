@@ -17,7 +17,8 @@ import {
 import { PredictWsClient } from "../clients/ws-client";
 import { buildEmergencyFlattenOrders } from "../execution/emergency-flatten";
 import {
-  resolvePrimaryOutcomeTokenId,
+  normalizePredictOrderSideAndPrice,
+  resolveOutcomeTokenIds,
   type PredictSdkMarketMetadata
 } from "../execution/predict-sdk";
 import {
@@ -63,6 +64,7 @@ export type RuntimeMarketInput = MarketCandidate & {
   bestBid?: number | null;
   bestAsk?: number | null;
   tokenId?: string;
+  complementaryTokenId?: string;
   feeRateBps?: number;
   isNegRisk?: boolean;
   isYieldBearing?: boolean;
@@ -221,6 +223,7 @@ export function buildLiveMarketMetadataMap(
   return markets.reduce<Record<number, PredictSdkMarketMetadata>>((accumulator, market) => {
     if (
       !market.tokenId ||
+      !market.complementaryTokenId ||
       market.feeRateBps === undefined ||
       market.isNegRisk === undefined ||
       market.isYieldBearing === undefined
@@ -231,6 +234,7 @@ export function buildLiveMarketMetadataMap(
     accumulator[market.id] = {
       marketId: market.id,
       tokenId: market.tokenId,
+      complementaryTokenId: market.complementaryTokenId,
       feeRateBps: market.feeRateBps,
       isNegRisk: market.isNegRisk,
       isYieldBearing: market.isYieldBearing
@@ -258,7 +262,10 @@ function parseWeiDecimal(value: string, decimals = 18): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export function normalizeOpenOrder(order: PredictOrderData): ManagedOrder | null {
+export function normalizeOpenOrder(
+  order: PredictOrderData,
+  marketsById?: Record<number, PredictSdkMarketMetadata>
+): ManagedOrder | null {
   const remainingAmountWei = BigInt(order.amount) - BigInt(order.amountFilled);
 
   if (remainingAmountWei <= 0n) {
@@ -268,14 +275,20 @@ export function normalizeOpenOrder(order: PredictOrderData): ManagedOrder | null
   const isBid = order.order.side === 0;
   const makerAmount = parseWeiDecimal(order.order.makerAmount);
   const takerAmount = parseWeiDecimal(order.order.takerAmount);
-  const price = isBid ? makerAmount / takerAmount : takerAmount / makerAmount;
+  const executionPrice = isBid ? makerAmount / takerAmount : takerAmount / makerAmount;
+  const normalized = normalizePredictOrderSideAndPrice({
+    tokenId: order.order.tokenId,
+    orderSide: order.order.side,
+    price: executionPrice,
+    market: marketsById?.[order.marketId]
+  });
 
-  if (!Number.isFinite(price) || price <= 0) {
+  if (!Number.isFinite(normalized.price) || normalized.price <= 0) {
     return null;
   }
 
   const remainingAmount = parseWeiDecimal(remainingAmountWei.toString());
-  const sizeUsd = Number((remainingAmount * price).toFixed(6));
+  const sizeUsd = Number((remainingAmount * normalized.price).toFixed(6));
 
   if (!Number.isFinite(sizeUsd) || sizeUsd <= 0) {
     return null;
@@ -284,8 +297,8 @@ export function normalizeOpenOrder(order: PredictOrderData): ManagedOrder | null
   return {
     id: order.id,
     marketId: order.marketId,
-    side: isBid ? "bid" : "ask",
-    price: Number(price.toFixed(6)),
+    side: normalized.side,
+    price: normalized.price,
     sizeUsd
   };
 }
@@ -299,7 +312,8 @@ function getSignedPositionValueUsd(position: PredictPositionData): number {
 
 async function loadPrivateState(
   services: RuntimeServices,
-  bearerToken: string | undefined
+  bearerToken: string | undefined,
+  marketsById?: Record<number, PredictSdkMarketMetadata>
 ): Promise<RuntimePrivateState> {
   if (!bearerToken) {
     return {
@@ -328,7 +342,7 @@ async function loadPrivateState(
     {}
   );
   const normalizedOpenOrders = ordersResponse.data
-    .map(normalizeOpenOrder)
+    .map((order) => normalizeOpenOrder(order, marketsById))
     .filter((order): order is ManagedOrder => order !== null);
 
   return {
@@ -507,9 +521,7 @@ async function loadRuntimeMarkets(
         oneSidedFill: options.fillByMarket?.[market.id] ?? false,
         bestBid: options.bestBidByMarket?.[market.id] ?? normalizedOrderbook.bestBid,
         bestAsk: options.bestAskByMarket?.[market.id] ?? normalizedOrderbook.bestAsk,
-        tokenId: market.outcomes.length > 0
-          ? resolvePrimaryOutcomeTokenId(market.outcomes)
-          : undefined,
+        ...(market.outcomes.length > 0 ? resolveOutcomeTokenIds(market.outcomes) : {}),
         feeRateBps: market.feeRateBps,
         isNegRisk: market.isNegRisk,
         isYieldBearing: market.isYieldBearing
@@ -562,8 +574,13 @@ export async function bootstrapConfiguredRuntimeState(
 ): Promise<BootstrappedRuntimeState> {
   const services = createRuntimeServices(mode, config, options);
   const bearerToken = await resolveBearerToken(services, config, options);
-  const privateState = await loadPrivateState(services, bearerToken);
-  const markets = (await loadRuntimeMarkets(services, options)).map((market) => ({
+  const markets = await loadRuntimeMarkets(services, options);
+  const privateState = await loadPrivateState(
+    services,
+    bearerToken,
+    buildLiveMarketMetadataMap(markets)
+  );
+  const marketsWithInventory = markets.map((market) => ({
     ...market,
     inventoryUsd: options.inventoryByMarket?.[market.id] ?? privateState.inventoryByMarket[market.id] ?? market.inventoryUsd
   }));
@@ -573,7 +590,7 @@ export async function bootstrapConfiguredRuntimeState(
     bearerToken,
     services,
     options,
-    markets,
+    markets: marketsWithInventory,
     currentOrders: options.currentOrders ?? privateState.normalizedOpenOrders,
     privateState,
     suppressCreates:
@@ -594,7 +611,11 @@ export async function refreshBootstrappedRuntimeState(
     state.config,
     state.options
   );
-  const privateState = await loadPrivateState(state.services, bearerToken);
+  const privateState = await loadPrivateState(
+    state.services,
+    bearerToken,
+    buildLiveMarketMetadataMap(state.markets)
+  );
 
   state.privateState = privateState;
   state.suppressCreates =
