@@ -624,7 +624,7 @@ export async function createRuntimeLoop(
       socket = state.services.wsClient.connect();
 
       if (socket) {
-        socket.onmessage = (event: MessageEvent<string>): void => {
+        socket.onmessage = (event: MessageEvent): void => {
           if (typeof event.data === "string") {
             void handleServerMessageAsync(event.data).catch((error) => {
               reportRuntimeError(options.onError, error);
