@@ -255,6 +255,74 @@ describe("createRuntimeLoop", () => {
     ]);
   });
 
+  it("serializes bootstrap live execution ahead of inbound websocket updates", async () => {
+    const syncCommandsCalls: unknown[] = [];
+    const reportedErrors: unknown[] = [];
+    let socketRef: (WebSocket & {
+      onmessage: ((event: { data: string }) => void) | null;
+    }) | undefined;
+
+    const loop = await createRuntimeLoop("live", {
+      ...config,
+      bearerToken: "jwt-token"
+    }, {
+      database: openAnalyticsStore(":memory:"),
+      restClient: buildPublicRestClient(),
+      onError(error) {
+        reportedErrors.push(error);
+      },
+      liveExecutor: {
+        async syncCommands(commands) {
+          syncCommandsCalls.push(commands);
+          return {
+            cancelled: {
+              success: true,
+              removed: [],
+              noop: []
+            },
+            created: commands
+              .filter((command) => command.type === "create")
+              .map((_, index) => ({
+                code: "CREATED",
+                orderId: `order-${syncCommandsCalls.length}-${index + 1}`,
+                orderHash: `hash-${syncCommandsCalls.length}-${index + 1}`
+              }))
+          };
+        }
+      },
+      wsClient: {
+        connect() {
+          socketRef = {
+            onmessage: null
+          } as WebSocket & { onmessage: ((event: { data: string }) => void) | null };
+
+          return socketRef;
+        },
+        async subscribe() {
+          socketRef?.onmessage?.({
+            data: JSON.stringify({
+              topic: "predictOrderbook/10",
+              data: {
+                marketId: 10,
+                updateTimestampMs: 2,
+                bids: [[0.45, 100]],
+                asks: [[0.47, 120]]
+              }
+            })
+          });
+        },
+        respondToHeartbeat() {}
+      }
+    });
+
+    const snapshot = await loop.bootstrap();
+    await flushAsyncWork();
+
+    expect(syncCommandsCalls.length).toBeGreaterThanOrEqual(1);
+    expect(reportedErrors).toEqual([]);
+    expect(snapshot.result.commands).toHaveLength(0);
+  });
+
   it("responds to heartbeats and reruns a cycle on orderbook updates", async () => {
     const heartbeats: Array<number | string> = [];
 

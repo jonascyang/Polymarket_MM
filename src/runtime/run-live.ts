@@ -40,6 +40,7 @@ async function main(): Promise<void> {
   });
   const runtime = await startPollingRuntime("live", config, {
     intervalMs: config.runtimeIntervalMs,
+    bearerToken,
     liveExecutor,
     onCycle(snapshot) {
       console.log(JSON.stringify({ type: "runtime_cycle", mode: "live", snapshot }));

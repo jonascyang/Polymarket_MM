@@ -381,7 +381,9 @@ async function syncExecutionState(
   nextShadowOrderId: () => string,
   liveExecutor?: Pick<PredictLiveExecutor, "syncCommands">
 ): Promise<void> {
-  if (state.result.commands.length === 0) {
+  const commands = state.result.commands;
+
+  if (commands.length === 0) {
     return;
   }
 
@@ -395,13 +397,13 @@ async function syncExecutionState(
   }
 
   const execution = await liveExecutor.syncCommands(
-    state.result.commands,
+    commands,
     buildLiveMarketMetadataMap(state.markets)
   );
 
   syncLiveOrders(
     state,
-    state.result.commands,
+    commands,
     execution.created.map((order) => order.orderId)
   );
 }
@@ -652,16 +654,18 @@ export async function createRuntimeLoop(
 
       subscribedTopics = buildSubscriptionTopics(state);
 
-      if (subscribedTopics.length > 0) {
-        await state.services.wsClient.subscribe(1, subscribedTopics);
-      }
+      return runSerialized(async () => {
+        if (subscribedTopics.length > 0) {
+          await state.services.wsClient.subscribe(1, subscribedTopics);
+        }
 
-      await syncExecutionState(state, nextShadowOrderId, options.liveExecutor);
-      applyMarketPlanStates(state);
-      recordCycleTelemetry(state);
-      cycleCount = 1;
-      bootstrapped = true;
-      return getSnapshot();
+        await syncExecutionState(state, nextShadowOrderId, options.liveExecutor);
+        applyMarketPlanStates(state);
+        recordCycleTelemetry(state);
+        cycleCount = 1;
+        bootstrapped = true;
+        return getSnapshot();
+      });
     },
     handleServerMessage,
     handleServerMessageAsync,
