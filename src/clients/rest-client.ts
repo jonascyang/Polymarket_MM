@@ -262,6 +262,15 @@ export function buildApiHeaders(apiKey: string, bearerToken?: string): HeadersIn
   return headers;
 }
 
+async function throwPredictApiError(response: Response, path: string): Promise<never> {
+  const responseText = (await response.text()).trim();
+  const detail = responseText ? ` ${responseText}` : "";
+
+  throw new Error(
+    `Predict API request failed: ${response.status} ${response.statusText} (${path})${detail}`
+  );
+}
+
 export class PredictRestClient {
   constructor(private readonly config: PredictMmConfig) {}
 
@@ -279,7 +288,7 @@ export class PredictRestClient {
     });
 
     if (!response.ok) {
-      throw new Error(`Predict API request failed: ${response.status} ${response.statusText} (${path})`);
+      await throwPredictApiError(response, path);
     }
 
     return (await response.json()) as PredictApiResponse<T>;
@@ -346,9 +355,7 @@ export class PredictRestClient {
       })
     }).then(async (response) => {
       if (!response.ok) {
-        throw new Error(
-          `Predict API request failed: ${response.status} ${response.statusText} (/orders/remove)`
-        );
+        await throwPredictApiError(response, "/orders/remove");
       }
 
       return (await response.json()) as PredictRemoveOrdersResponse;

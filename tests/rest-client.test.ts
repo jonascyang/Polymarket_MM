@@ -136,4 +136,48 @@ describe("PredictRestClient private order routes", () => {
       })
     });
   });
+
+  it("includes the API response body when createOrder is rejected", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      text: async () => JSON.stringify({ message: "approval missing" })
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new PredictRestClient({
+      apiBaseUrl: "https://api.predict.fun/v1",
+      wsUrl: "wss://ws.predict.fun/ws",
+      apiKey: "key",
+      dbPath: ":memory:"
+    });
+
+    await expect(
+      client.createOrder("jwt-token", {
+        data: {
+          order: {
+            hash: "0xhash",
+            salt: "1",
+            maker: "0xmaker",
+            signer: "0xmaker",
+            taker: "0x0000000000000000000000000000000000000000",
+            tokenId: "123",
+            makerAmount: "4000000000000000000",
+            takerAmount: "10000000000000000000",
+            expiration: 9999999999,
+            nonce: "1",
+            feeRateBps: "200",
+            side: 0,
+            signatureType: 0,
+            signature: "0xsig"
+          },
+          pricePerShare: "400000000000000000",
+          strategy: "LIMIT"
+        }
+      })
+    ).rejects.toThrow(
+      'Predict API request failed: 400 Bad Request (/orders) {"message":"approval missing"}'
+    );
+  });
 });
