@@ -16,7 +16,24 @@ describe("buildMonitorSnapshot", () => {
       .prepare(
         "INSERT INTO portfolio_snapshots (flatten_pnl_usd, flatten_pnl_pct, net_inventory_usd, payload_json, recorded_at) VALUES (?, ?, ?, ?, ?)"
       )
-      .run(-0.25, -0.005, 8, JSON.stringify({ aggregateNetInventoryUsd: 8 }), "2026-04-02T00:10:00.000Z");
+      .run(
+        -0.25,
+        -0.005,
+        8,
+        JSON.stringify({
+          aggregateNetInventoryUsd: 8,
+          privateState: {
+            bearerTokenPresent: true,
+            accountAddress: "0xabc",
+            openOrders: 2,
+            normalizedOpenOrders: 1,
+            positions: 1,
+            positionMarketIds: [110620],
+            hasUnnormalizedOpenOrders: true
+          }
+        }),
+        "2026-04-02T00:10:00.000Z"
+      );
 
     database
       .prepare(
@@ -121,6 +138,15 @@ describe("buildMonitorSnapshot", () => {
     expect(snapshot.risk.mode).toBe("Normal");
     expect(snapshot.portfolio.flattenPnlUsd).toBe(-0.25);
     expect(snapshot.portfolio.netInventoryUsd).toBe(8);
+    expect(snapshot.privateState).toEqual({
+      bearerTokenPresent: true,
+      accountAddress: "0xabc",
+      openOrders: 2,
+      normalizedOpenOrders: 1,
+      positions: 1,
+      positionMarketIds: [110620],
+      hasUnnormalizedOpenOrders: true
+    });
     expect(snapshot.activeMarkets).toEqual([
       expect.objectContaining({
         marketId: 110620,
@@ -172,6 +198,9 @@ describe("buildMonitorSnapshot", () => {
     expect(snapshot.replay.pointsProxy).toBeGreaterThanOrEqual(0);
     expect(text).toContain("Risk: Normal");
     expect(text).toContain("Flatten PnL: -0.25 USD (-0.50%)");
+    expect(text).toContain("Private state:");
+    expect(text).toContain("JWT=yes");
+    expect(text).toContain("account=0xabc");
     expect(text).toContain("110620");
     expect(text).toContain("order-1");
   });

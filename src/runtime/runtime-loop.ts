@@ -443,7 +443,16 @@ function recordCycleTelemetry(state: BootstrappedRuntimeState): void {
     payload: {
       ...state.result.risk,
       flattenPnlPct,
-      aggregateNetInventoryUsd
+      aggregateNetInventoryUsd,
+      privateState: {
+        bearerTokenPresent: state.privateState.bearerTokenPresent,
+        accountAddress: state.privateState.account?.address ?? null,
+        openOrders: state.privateState.openOrders.length,
+        normalizedOpenOrders: state.privateState.normalizedOpenOrders.length,
+        positions: state.privateState.positions.length,
+        positionMarketIds: state.privateState.positions.map((position) => position.market.id),
+        hasUnnormalizedOpenOrders: state.privateState.hasUnnormalizedOpenOrders
+      }
     }
   });
 

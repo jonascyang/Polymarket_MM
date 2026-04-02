@@ -473,6 +473,108 @@ describe("createRuntimeLoop", () => {
     expect(JSON.parse(fillRow.payload_json).sizeUsd).toBe(2);
   });
 
+  it("records private state summary into portfolio telemetry for live monitoring", async () => {
+    const database = openAnalyticsStore(":memory:");
+    const loop = await createRuntimeLoop(
+      "live",
+      {
+        ...config,
+        bearerToken: "jwt-token"
+      },
+      {
+        database,
+        restClient: {
+          ...buildPublicRestClient(),
+          async getOrders() {
+            return {
+              success: true,
+              data: [
+                {
+                  id: "order-1",
+                  marketId: 10,
+                  currency: "USDT",
+                  amount: "5000000000000000000",
+                  amountFilled: "0",
+                  isNegRisk: false,
+                  isYieldBearing: false,
+                  strategy: "LIMIT",
+                  status: "OPEN",
+                  rewardEarningRate: 0,
+                  order: {
+                    salt: "1",
+                    maker: "0xabc",
+                    signer: "0xabc",
+                    taker: "0x0000000000000000000000000000000000000000",
+                    tokenId: "101",
+                    makerAmount: "16000000",
+                    takerAmount: "5000000",
+                    expiration: 9999999999,
+                    nonce: "1",
+                    feeRateBps: "0",
+                    side: 0,
+                    signatureType: 0
+                  }
+                }
+              ]
+            };
+          },
+          async getPositions() {
+            return {
+              success: true,
+              data: [
+                {
+                  id: "position-1",
+                  market: { id: 10 },
+                  outcome: { name: "Yes", indexSet: 1, onChainId: "101" },
+                  amount: "1000000000000000000",
+                  valueUsd: "3.5",
+                  averageBuyPriceUsd: "0.35",
+                  pnlUsd: "0.1"
+                }
+              ]
+            };
+          }
+        },
+        wsClient: {
+          connect() {
+            return {} as WebSocket;
+          },
+          subscribe() {},
+          respondToHeartbeat() {}
+        }
+      }
+    );
+
+    await loop.bootstrap();
+
+    const row = database
+      .prepare(
+        "SELECT payload_json FROM portfolio_snapshots ORDER BY id DESC LIMIT 1"
+      )
+      .get() as { payload_json: string };
+    const payload = JSON.parse(row.payload_json) as {
+      privateState?: {
+        bearerTokenPresent: boolean;
+        accountAddress: string | null;
+        openOrders: number;
+        normalizedOpenOrders: number;
+        positions: number;
+        positionMarketIds: number[];
+        hasUnnormalizedOpenOrders: boolean;
+      };
+    };
+
+    expect(payload.privateState).toEqual({
+      bearerTokenPresent: true,
+      accountAddress: "0xabc",
+      openOrders: 1,
+      normalizedOpenOrders: 1,
+      positions: 1,
+      positionMarketIds: [10],
+      hasUnnormalizedOpenOrders: false
+    });
+  });
+
   it("moves a live market into Defend after a one-sided fill", async () => {
     const loop = await createRuntimeLoop(
       "live",

@@ -64,6 +64,15 @@ export type MonitorSnapshot = {
     netInventoryUsd: number | null;
     recordedAt: string | null;
   };
+  privateState: {
+    bearerTokenPresent: boolean;
+    accountAddress: string | null;
+    openOrders: number;
+    normalizedOpenOrders: number;
+    positions: number;
+    positionMarketIds: number[];
+    hasUnnormalizedOpenOrders: boolean;
+  } | null;
   activeMarkets: ActiveMarketMonitorRow[];
   recentOrders: RecentOrderMonitorRow[];
   recentFills: RecentFillMonitorRow[];
@@ -94,6 +103,10 @@ export function buildMonitorSnapshot(
   const recentFills = selectRecentFills(database, recentFillLimit);
   const replay = summarizeReplay(buildReplaySummaryFromAnalytics(database));
   const riskPayload = latestRisk ? parseUnknownJson(latestRisk.payloadJson) : {};
+  const portfolioPayload = latestPortfolio
+    ? parseUnknownJson(latestPortfolio.payloadJson)
+    : {};
+  const privateState = parsePrivateStateSummary(portfolioPayload.privateState);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -109,6 +122,7 @@ export function buildMonitorSnapshot(
       netInventoryUsd: latestPortfolio?.netInventoryUsd ?? null,
       recordedAt: latestPortfolio?.recordedAt ?? null
     },
+    privateState,
     activeMarkets,
     recentOrders,
     recentFills,
@@ -133,6 +147,8 @@ export function formatMonitorSnapshot(
     `Risk: ${riskModeText}${snapshot.risk.reason ? ` (${snapshot.risk.reason})` : ""}`,
     `Flatten PnL: ${flattenPnlText} (${flattenPctText})`,
     `Net Inventory: ${formatUsd(snapshot.portfolio.netInventoryUsd)}`,
+    colorizeLabel("Private state:", color, ANSI_CYAN),
+    formatPrivateStateSummary(snapshot.privateState),
     colorizeLabel("Replay metrics:", color, ANSI_CYAN),
     `fills=${snapshot.replay.fills}, score=${formatSeconds(snapshot.replay.scoreSeconds)}, defend=${formatSeconds(snapshot.replay.defendSeconds)}, pointsProxy=${formatDecimal(snapshot.replay.pointsProxy)}, adverse30=${formatBps(snapshot.replay.adverseMove30sBps)}, adverse60=${formatBps(snapshot.replay.adverseMove60sBps)}`,
     "",
@@ -419,6 +435,59 @@ function asString(value: unknown): string | null {
 
 function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function parsePrivateStateSummary(value: unknown): MonitorSnapshot["privateState"] {
+  const payload = asRecord(value);
+
+  if (Object.keys(payload).length === 0) {
+    return null;
+  }
+
+  return {
+    bearerTokenPresent: asBoolean(payload.bearerTokenPresent),
+    accountAddress: asString(payload.accountAddress),
+    openOrders: asInteger(payload.openOrders),
+    normalizedOpenOrders: asInteger(payload.normalizedOpenOrders),
+    positions: asInteger(payload.positions),
+    positionMarketIds: asNumberArray(payload.positionMarketIds),
+    hasUnnormalizedOpenOrders: asBoolean(payload.hasUnnormalizedOpenOrders)
+  };
+}
+
+function asBoolean(value: unknown): boolean {
+  return value === true;
+}
+
+function asInteger(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 0;
+}
+
+function asNumberArray(value: unknown): number[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is number => typeof entry === "number" && Number.isFinite(entry))
+    : [];
+}
+
+function formatPrivateStateSummary(
+  privateState: MonitorSnapshot["privateState"]
+): string {
+  if (!privateState) {
+    return "JWT=no account=n/a orders=0/0 positions=0 markets=-";
+  }
+
+  return [
+    `JWT=${privateState.bearerTokenPresent ? "yes" : "no"}`,
+    `account=${privateState.accountAddress ?? "n/a"}`,
+    `orders=${privateState.normalizedOpenOrders}/${privateState.openOrders}`,
+    `positions=${privateState.positions}`,
+    `markets=${
+      privateState.positionMarketIds.length > 0
+        ? privateState.positionMarketIds.join(",")
+        : "-"
+    }`,
+    `unnormalized=${privateState.hasUnnormalizedOpenOrders ? "yes" : "no"}`
+  ].join(" ");
 }
 
 function formatUsd(value: number | null): string {

@@ -43,7 +43,7 @@ If `PREDICT_AUTH_BEARER_TOKEN` is already set, the runtime reuses that token ins
 
 The three runtime scripts now start a long-lived polling loop, print JSON snapshots on bootstrap and every cycle, and stop cleanly on `SIGINT` / `SIGTERM`.
 `npm run live` also wires the official `@predictdotfun/sdk` order builder into the loop so live create/cancel commands are signed and submitted through the official flow.
-`npm run monitor` reads the local analytics SQLite store and prints a terminal summary of current risk mode, flatten PnL, active markets, recent orders, recent fills, and replay-derived points metrics. Use `npm run monitor -- --once` for a single snapshot or `npm run monitor -- --interval-ms=2000` to refresh faster.
+`npm run monitor` reads the local analytics SQLite store and prints a terminal summary of current risk mode, flatten PnL, live private-state summary (`JWT/account/open orders/positions`), active markets, recent orders, recent fills, and replay-derived points metrics. Use `npm run monitor -- --once` for a single snapshot or `npm run monitor -- --interval-ms=2000` to refresh faster.
 
 ## Current modules
 
