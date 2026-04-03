@@ -719,29 +719,38 @@ function buildQuoteOrders(
     inventoryUsd: market.inventoryUsd,
     maxInventoryUsd: market.maxInventoryUsd,
     tickSize: market.tickSize,
+    bestBid: market.bestBid,
+    bestAsk: market.bestAsk,
     aggregateNetInventoryUsd,
     aggregateNetInventoryCapUsd,
     quoteBudgetUsd
   });
 
-  if (!quotes.canQuote || quotes.sizeUsd <= 0) {
+  if (!quotes.canQuote || (quotes.bidSizeUsd <= 0 && quotes.askSizeUsd <= 0)) {
     return [];
   }
 
-  return [
-    {
+  const orders: ManagedOrder[] = [];
+
+  if (quotes.bidSizeUsd > 0) {
+    orders.push({
       marketId: market.id,
       side: "bid",
       price: quotes.bid,
-      sizeUsd: quotes.sizeUsd
-    },
-    {
+      sizeUsd: quotes.bidSizeUsd
+    });
+  }
+
+  if (quotes.askSizeUsd > 0) {
+    orders.push({
       marketId: market.id,
       side: "ask",
       price: quotes.ask,
-      sizeUsd: quotes.sizeUsd
-    }
-  ];
+      sizeUsd: quotes.askSizeUsd
+    });
+  }
+
+  return orders;
 }
 
 export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
@@ -827,6 +836,8 @@ export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
           inventoryUsd: market.inventoryUsd,
           maxInventoryUsd: market.maxInventoryUsd,
           tickSize: market.tickSize,
+          bestBid: market.bestBid,
+          bestAsk: market.bestAsk,
           aggregateNetInventoryUsd,
           aggregateNetInventoryCapUsd,
           quoteBudgetUsd: input.quoteBudgetUsd

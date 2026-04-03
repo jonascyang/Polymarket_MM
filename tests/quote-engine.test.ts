@@ -30,4 +30,32 @@ describe("buildQuotes", () => {
     expect(quotes.canQuote).toBe(false);
     expect(quotes.sizeUsd).toBe(0);
   });
+
+  it("keeps only the ask active in protect mode when inventory is long", () => {
+    const quotes = buildQuotes({
+      mode: "Protect",
+      fairValue: 0.5,
+      inventoryUsd: 8,
+      maxInventoryUsd: 15,
+      tickSize: 0.001
+    });
+
+    expect(quotes.bidSizeUsd).toBe(0);
+    expect(quotes.askSizeUsd).toBeGreaterThan(0);
+  });
+
+  it("stops quoting the missing side when protect mode sees a one-sided book", () => {
+    const quotes = buildQuotes({
+      mode: "Protect",
+      fairValue: 0.5,
+      inventoryUsd: 0,
+      maxInventoryUsd: 15,
+      tickSize: 0.001,
+      bestBid: 0.49,
+      bestAsk: null
+    });
+
+    expect(quotes.bidSizeUsd).toBeGreaterThan(0);
+    expect(quotes.askSizeUsd).toBe(0);
+  });
 });

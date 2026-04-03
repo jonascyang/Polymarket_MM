@@ -277,6 +277,53 @@ describe("runRuntimeCycle", () => {
       }
     ]);
   });
+
+  it("quotes only the inventory-relieving side in protect mode", () => {
+    const result = runRuntimeCycle({
+      mode: "shadow",
+      markets: [
+        {
+          id: 10,
+          hoursToResolution: 96,
+          mid: 0.44,
+          spread: 0.01,
+          spreadThreshold: 0.06,
+          hasTwoSidedBook: true,
+          volume24hUsd: 18000,
+          isBoosted: true,
+          isVisible: true,
+          tradingStatus: "OPEN",
+          marketVariant: "DEFAULT",
+          isToxic: false,
+          currentState: "Protect",
+          inventoryUsd: 8,
+          maxInventoryUsd: 15,
+          tickSize: 0.001,
+          oneSidedFill: false,
+          bestBid: 0.44,
+          bestAsk: 0.46
+        }
+      ],
+      currentOrders: [],
+      riskInput: {
+        flattenPnlPct: -0.001,
+        peakDrawdownPct: -0.001,
+        aggregateNetInventoryUsd: 8,
+        aggregateNetInventoryCapUsd: 45,
+        minutesToExit: 180
+      }
+    });
+
+    expect(result.marketPlans[0]?.nextState).toBe("Protect");
+    expect(result.orderDiff.create).toEqual([
+      {
+        marketId: 10,
+        side: "ask",
+        price: 0.442,
+        sizeUsd: 4
+      }
+    ]);
+  });
 });
 
 describe("runConfiguredRuntimeOnce", () => {

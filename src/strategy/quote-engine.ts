@@ -6,6 +6,8 @@ export type BuildQuotesInput = {
   inventoryUsd: number;
   maxInventoryUsd: number;
   tickSize: number;
+  bestBid?: number | null;
+  bestAsk?: number | null;
   scoreQuoteSizeUsd?: number;
   defendQuoteSizeUsd?: number;
   quoteBudgetUsd?: number;
@@ -17,6 +19,8 @@ export type QuotePlan = {
   mode: QuoteMode;
   bid: number;
   ask: number;
+  bidSizeUsd: number;
+  askSizeUsd: number;
   reservationPrice: number;
   baseHalfSpread: number;
   sizeUsd: number;
@@ -72,15 +76,64 @@ function getQuoteSizeUsd(input: BuildQuotesInput): number {
   return Math.min(defaultSize, input.quoteBudgetUsd);
 }
 
+function getQuoteSideAvailability(input: BuildQuotesInput): {
+  bidEnabled: boolean;
+  askEnabled: boolean;
+} {
+  if (input.mode !== "Protect") {
+    return {
+      bidEnabled: true,
+      askEnabled: true
+    };
+  }
+
+  if (input.inventoryUsd > 0) {
+    return {
+      bidEnabled: false,
+      askEnabled: true
+    };
+  }
+
+  if (input.inventoryUsd < 0) {
+    return {
+      bidEnabled: true,
+      askEnabled: false
+    };
+  }
+
+  if (input.bestBid != null && input.bestAsk == null) {
+    return {
+      bidEnabled: true,
+      askEnabled: false
+    };
+  }
+
+  if (input.bestBid == null && input.bestAsk != null) {
+    return {
+      bidEnabled: false,
+      askEnabled: true
+    };
+  }
+
+  return {
+    bidEnabled: true,
+    askEnabled: true
+  };
+}
+
 export function buildQuotes(input: BuildQuotesInput): QuotePlan {
   const baseHalfSpread = getBaseHalfSpread(input.mode, input.tickSize);
   const inventoryRatio = clamp(input.inventoryUsd / input.maxInventoryUsd, -1, 1);
   const reservationPrice = clamp(input.fairValue - inventoryRatio * baseHalfSpread, 0, 1);
+  const { bidEnabled, askEnabled } = getQuoteSideAvailability(input);
   const canQuote =
     input.mode !== "Pause" &&
     input.mode !== "Stop" &&
+    (bidEnabled || askEnabled) &&
     hasAggregateQuoteCapacity(input);
   const sizeUsd = canQuote ? getQuoteSizeUsd(input) : 0;
+  const bidSizeUsd = canQuote && bidEnabled ? sizeUsd : 0;
+  const askSizeUsd = canQuote && askEnabled ? sizeUsd : 0;
   const bid = clamp(
     floorToTick(reservationPrice - baseHalfSpread, input.tickSize),
     0,
@@ -96,6 +149,8 @@ export function buildQuotes(input: BuildQuotesInput): QuotePlan {
     mode: input.mode,
     bid,
     ask,
+    bidSizeUsd,
+    askSizeUsd,
     reservationPrice,
     baseHalfSpread,
     sizeUsd,
