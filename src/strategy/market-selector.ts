@@ -1,6 +1,6 @@
 import { isEligibleMarket, type MarketCandidate } from "./market-filter";
 
-export type SelectedMarketMode = "Score" | "Defend";
+export type SelectedMarketMode = "Quote" | "Protect";
 
 export type ActiveMarket = MarketCandidate & {
   targetMode: SelectedMarketMode;
@@ -46,7 +46,7 @@ export function selectActiveMarkets(markets: MarketCandidate[]): MarketSelection
   return {
     active: eligibleMarkets.map((market, index) => ({
       ...market,
-      targetMode: index === 0 ? "Score" : "Defend"
+      targetMode: index === 0 ? "Quote" : "Protect"
     }))
   };
 }

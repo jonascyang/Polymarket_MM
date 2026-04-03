@@ -35,7 +35,7 @@ import type { NormalizedBookLevel } from "../recorder/normalizers";
 import { openAnalyticsStore } from "../storage/sqlite";
 import { evaluateRiskMode, type EvaluateRiskInput, type RiskEvaluation } from "../risk/risk-controller";
 import { selectActiveMarkets } from "../strategy/market-selector";
-import { buildQuotes, type QuotePlan } from "../strategy/quote-engine";
+import { buildQuotes, type QuoteMode, type QuotePlan } from "../strategy/quote-engine";
 import { nextMarketState, type MarketState } from "../strategy/state-machine";
 import type { MarketCandidate } from "../strategy/market-filter";
 
@@ -63,6 +63,7 @@ export type RuntimeMarketInput = MarketCandidate & {
   maxInventoryUsd: number;
   tickSize: number;
   oneSidedFill: boolean;
+  quoteCountSinceFill?: number;
   bestBid?: number | null;
   bestAsk?: number | null;
   tokenId?: string;
@@ -82,7 +83,7 @@ export type RuntimeMarketInput = MarketCandidate & {
 
 export type RuntimeMarketPlan = {
   marketId: number;
-  selectedMode: "Score" | "Defend";
+  selectedMode: "Quote" | "Protect";
   nextState: MarketState;
   quotes: QuotePlan | null;
 };
@@ -546,6 +547,7 @@ async function loadRuntimeMarkets(
         maxInventoryUsd: options.maxInventoryUsd ?? 15,
         tickSize: getTickSize(market.decimalPrecision),
         oneSidedFill: options.fillByMarket?.[market.id] ?? false,
+        quoteCountSinceFill: 0,
         bestBid: options.bestBidByMarket?.[market.id] ?? normalizedOrderbook.bestBid,
         bestAsk: options.bestAskByMarket?.[market.id] ?? normalizedOrderbook.bestAsk,
         bidBook: normalizedOrderbook.bids,
@@ -672,6 +674,32 @@ function shouldEmergencyFlatten(risk: RiskEvaluation): boolean {
   return risk.forceFlatten || risk.mode === "HardStop" || risk.mode === "Catastrophic";
 }
 
+const HIGH_QUOTE_CHURN_THRESHOLD = 6;
+const PAUSE_QUOTE_CHURN_THRESHOLD = 12;
+
+function hasHighQuoteToFillRatio(market: RuntimeMarketInput): boolean {
+  return (market.quoteCountSinceFill ?? 0) >= HIGH_QUOTE_CHURN_THRESHOLD;
+}
+
+function shouldPauseMarket(market: RuntimeMarketInput): boolean {
+  return (market.quoteCountSinceFill ?? 0) >= PAUSE_QUOTE_CHURN_THRESHOLD;
+}
+
+function resolveQuoteMode(state: MarketState): QuoteMode | null {
+  switch (state) {
+    case "Quote":
+    case "Throttle":
+    case "Protect":
+      return state;
+    case "Score":
+      return "Quote";
+    case "Defend":
+      return "Protect";
+    default:
+      return null;
+  }
+}
+
 function buildQuoteOrders(
   market: RuntimeMarketInput,
   nextState: MarketState,
@@ -679,12 +707,14 @@ function buildQuoteOrders(
   aggregateNetInventoryCapUsd: number | undefined,
   quoteBudgetUsd: number | undefined
 ): ManagedOrder[] {
-  if (nextState !== "Score" && nextState !== "Defend") {
+  const mode = resolveQuoteMode(nextState);
+
+  if (mode === null) {
     return [];
   }
 
   const quotes = buildQuotes({
-    mode: nextState,
+    mode,
     fairValue: market.mid,
     inventoryUsd: market.inventoryUsd,
     maxInventoryUsd: market.maxInventoryUsd,
@@ -740,8 +770,8 @@ export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
       risk,
       marketPlans: input.markets.map((market) => ({
         marketId: market.id,
-        selectedMode: "Defend",
-        nextState: "Exit",
+        selectedMode: "Protect",
+        nextState: "Stop",
         quotes: null
       })),
       orderDiff,
@@ -777,6 +807,9 @@ export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
     } else {
       nextState = nextMarketState(market.currentState, {
         oneSidedFill: market.oneSidedFill,
+        hasOneSidedBook: !market.hasTwoSidedBook,
+        quoteToFillRatioHigh: hasHighQuoteToFillRatio(market),
+        shouldPause: shouldPauseMarket(market),
         isToxic: market.isToxic,
         inventoryUsd: market.inventoryUsd,
         maxInventoryUsd: market.maxInventoryUsd,
@@ -786,9 +819,10 @@ export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
       });
     }
 
-    const quotes = nextState === "Score" || nextState === "Defend"
+    const quoteMode = resolveQuoteMode(nextState);
+    const quotes = quoteMode !== null
       ? buildQuotes({
-          mode: nextState,
+          mode: quoteMode,
           fairValue: market.mid,
           inventoryUsd: market.inventoryUsd,
           maxInventoryUsd: market.maxInventoryUsd,

@@ -126,9 +126,9 @@ describe("selectActiveMarkets", () => {
 
     expect(result.active.map((market) => market.id)).toEqual([11, 12, 10]);
     expect(result.active.map((market) => market.targetMode)).toEqual([
-      "Score",
-      "Defend",
-      "Defend"
+      "Quote",
+      "Protect",
+      "Protect"
     ]);
   });
 });

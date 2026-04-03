@@ -1,4 +1,4 @@
-export type QuoteMode = "Score" | "Defend" | "Exit";
+export type QuoteMode = "Quote" | "Throttle" | "Protect" | "Pause" | "Stop";
 
 export type BuildQuotesInput = {
   mode: QuoteMode;
@@ -37,11 +37,14 @@ function ceilToTick(value: number, tickSize: number): number {
 
 function getBaseHalfSpread(mode: QuoteMode, tickSize: number): number {
   switch (mode) {
-    case "Score":
+    case "Quote":
       return tickSize * 2;
-    case "Defend":
+    case "Throttle":
+      return tickSize * 3;
+    case "Protect":
       return tickSize * 4;
-    case "Exit":
+    case "Pause":
+    case "Stop":
       return tickSize * 8;
   }
 }
@@ -58,7 +61,7 @@ function hasAggregateQuoteCapacity(input: BuildQuotesInput): boolean {
 }
 
 function getQuoteSizeUsd(input: BuildQuotesInput): number {
-  const defaultSize = input.mode === "Score"
+  const defaultSize = input.mode === "Quote"
     ? (input.scoreQuoteSizeUsd ?? 6)
     : (input.defendQuoteSizeUsd ?? 4);
 
@@ -73,7 +76,10 @@ export function buildQuotes(input: BuildQuotesInput): QuotePlan {
   const baseHalfSpread = getBaseHalfSpread(input.mode, input.tickSize);
   const inventoryRatio = clamp(input.inventoryUsd / input.maxInventoryUsd, -1, 1);
   const reservationPrice = clamp(input.fairValue - inventoryRatio * baseHalfSpread, 0, 1);
-  const canQuote = input.mode !== "Exit" && hasAggregateQuoteCapacity(input);
+  const canQuote =
+    input.mode !== "Pause" &&
+    input.mode !== "Stop" &&
+    hasAggregateQuoteCapacity(input);
   const sizeUsd = canQuote ? getQuoteSizeUsd(input) : 0;
   const bid = clamp(
     floorToTick(reservationPrice - baseHalfSpread, input.tickSize),

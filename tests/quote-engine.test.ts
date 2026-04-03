@@ -5,7 +5,7 @@ import { buildQuotes } from "../src/strategy/quote-engine";
 describe("buildQuotes", () => {
   it("moves the ask closer and the bid farther when inventory is long", () => {
     const quotes = buildQuotes({
-      mode: "Defend",
+      mode: "Protect",
       fairValue: 0.5,
       inventoryUsd: 8,
       maxInventoryUsd: 15,
@@ -18,7 +18,7 @@ describe("buildQuotes", () => {
 
   it("disables quoting when aggregate net inventory has reached the portfolio cap", () => {
     const quotes = buildQuotes({
-      mode: "Score",
+      mode: "Quote",
       fairValue: 0.5,
       inventoryUsd: 0,
       maxInventoryUsd: 15,

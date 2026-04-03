@@ -265,6 +265,26 @@ function setMarketInventory(
   state.privateState.inventoryByMarket[marketId] = market.inventoryUsd;
 }
 
+function incrementQuoteCountSinceFill(
+  state: BootstrappedRuntimeState,
+  orders: Pick<ManagedOrder, "marketId">[]
+): void {
+  const quoteCountsByMarket = orders.reduce<Map<number, number>>((accumulator, order) => {
+    accumulator.set(order.marketId, (accumulator.get(order.marketId) ?? 0) + 1);
+    return accumulator;
+  }, new Map());
+
+  for (const market of state.markets) {
+    const increment = quoteCountsByMarket.get(market.id);
+
+    if (increment === undefined) {
+      continue;
+    }
+
+    market.quoteCountSinceFill = (market.quoteCountSinceFill ?? 0) + increment;
+  }
+}
+
 function updatePrivateOpenOrders(
   state: BootstrappedRuntimeState,
   nextOrders: ManagedOrder[]
@@ -382,10 +402,14 @@ function applyWalletEventToState(
       {
         const market = state.markets.find((candidate) => candidate.id === event.marketId);
 
-        if (market && event.side && market.inventoryUsd !== 0) {
-          market.oneSidedFill = true;
-          market.lastFillMid = market.mid;
-          market.lastFillSide = event.side;
+        if (market) {
+          market.quoteCountSinceFill = 0;
+
+          if (event.side && market.inventoryUsd !== 0) {
+            market.oneSidedFill = true;
+            market.lastFillMid = market.mid;
+            market.lastFillSide = event.side;
+          }
         }
       }
 
@@ -455,6 +479,7 @@ function syncSimulatedShadowOrders(
     });
   }
 
+  incrementQuoteCountSinceFill(state, applied.createdOrders);
   state.currentOrders = applied.currentOrders;
   state.result = rerunCycle(state);
 }
@@ -519,6 +544,7 @@ function syncLiveOrders(
     });
   }
 
+  incrementQuoteCountSinceFill(state, createdOrders);
   state.currentOrders = [...survivingOrders, ...createdOrders];
   state.result = rerunCycle(state);
 }
@@ -632,7 +658,8 @@ function recordCycleTelemetry(state: BootstrappedRuntimeState): void {
         bestBid: market.bestBid ?? null,
         bestAsk: market.bestAsk ?? null,
         bidDepth1: market.bidBook?.[0]?.size ?? null,
-        askDepth1: market.askBook?.[0]?.size ?? null
+        askDepth1: market.askBook?.[0]?.size ?? null,
+        quoteCountSinceFill: market.quoteCountSinceFill ?? 0
       }
     });
   }

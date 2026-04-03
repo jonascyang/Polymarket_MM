@@ -137,11 +137,89 @@ describe("runRuntimeCycle", () => {
     expect(result.policy.placeOrders).toBe(false);
     expect(result.risk.mode).toBe("Normal");
     expect(result.marketPlans.map((plan) => [plan.marketId, plan.nextState])).toEqual([
-      [10, "Score"],
-      [11, "Defend"],
-      [12, "Defend"]
+      [10, "Quote"],
+      [11, "Protect"],
+      [12, "Protect"]
     ]);
     expect(result.orderDiff.create).toHaveLength(6);
+  });
+
+  it("throttles markets after repeated quote churn without fills", () => {
+    const result = runRuntimeCycle({
+      mode: "shadow",
+      markets: [
+        {
+          id: 10,
+          hoursToResolution: 96,
+          mid: 0.44,
+          spread: 0.01,
+          spreadThreshold: 0.06,
+          hasTwoSidedBook: true,
+          volume24hUsd: 18000,
+          isBoosted: true,
+          isVisible: true,
+          tradingStatus: "OPEN",
+          marketVariant: "DEFAULT",
+          isToxic: false,
+          currentState: "Quote",
+          inventoryUsd: 0,
+          maxInventoryUsd: 15,
+          tickSize: 0.001,
+          oneSidedFill: false,
+          quoteCountSinceFill: 6
+        }
+      ],
+      currentOrders: [],
+      riskInput: {
+        flattenPnlPct: -0.001,
+        peakDrawdownPct: -0.001,
+        aggregateNetInventoryUsd: 0,
+        aggregateNetInventoryCapUsd: 45,
+        minutesToExit: 180
+      }
+    });
+
+    expect(result.marketPlans).toHaveLength(1);
+    expect(result.marketPlans[0]?.nextState).toBe("Throttle");
+  });
+
+  it("pauses markets after prolonged quote churn without fills", () => {
+    const result = runRuntimeCycle({
+      mode: "shadow",
+      markets: [
+        {
+          id: 10,
+          hoursToResolution: 96,
+          mid: 0.44,
+          spread: 0.01,
+          spreadThreshold: 0.06,
+          hasTwoSidedBook: true,
+          volume24hUsd: 18000,
+          isBoosted: true,
+          isVisible: true,
+          tradingStatus: "OPEN",
+          marketVariant: "DEFAULT",
+          isToxic: false,
+          currentState: "Quote",
+          inventoryUsd: 0,
+          maxInventoryUsd: 15,
+          tickSize: 0.001,
+          oneSidedFill: false,
+          quoteCountSinceFill: 12
+        }
+      ],
+      currentOrders: [],
+      riskInput: {
+        flattenPnlPct: -0.001,
+        peakDrawdownPct: -0.001,
+        aggregateNetInventoryUsd: 0,
+        aggregateNetInventoryCapUsd: 45,
+        minutesToExit: 180
+      }
+    });
+
+    expect(result.marketPlans).toHaveLength(1);
+    expect(result.marketPlans[0]?.nextState).toBe("Pause");
   });
 
   it("switches to emergency flatten on hard stop", () => {
@@ -161,7 +239,7 @@ describe("runRuntimeCycle", () => {
           tradingStatus: "OPEN",
           marketVariant: "DEFAULT",
           isToxic: false,
-          currentState: "Defend",
+          currentState: "Protect",
           inventoryUsd: 8,
           maxInventoryUsd: 15,
           tickSize: 0.001,

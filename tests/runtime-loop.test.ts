@@ -213,9 +213,31 @@ describe("createRuntimeLoop", () => {
     const snapshot = await loop.bootstrap();
 
     expect(snapshot.markets.map((market) => [market.id, market.currentState])).toEqual([
-      [10, "Score"],
-      [11, "Defend"],
-      [12, "Defend"]
+      [10, "Quote"],
+      [11, "Protect"],
+      [12, "Protect"]
+    ]);
+  });
+
+  it("tracks quote churn counts for bootstrapped shadow orders", async () => {
+    const loop = await createRuntimeLoop("shadow", config, {
+      database: openAnalyticsStore(":memory:"),
+      restClient: buildPublicRestClient(),
+      wsClient: {
+        connect() {
+          return {} as WebSocket;
+        },
+        subscribe() {},
+        respondToHeartbeat() {}
+      }
+    });
+
+    const snapshot = await loop.bootstrap();
+
+    expect(snapshot.markets.map((market) => [market.id, market.quoteCountSinceFill])).toEqual([
+      [10, 2],
+      [11, 2],
+      [12, 2]
     ]);
   });
 
@@ -677,7 +699,7 @@ describe("createRuntimeLoop", () => {
     });
   });
 
-  it("moves a live market into Defend after a one-sided fill", async () => {
+  it("moves a live market into Protect after a one-sided fill", async () => {
     const loop = await createRuntimeLoop(
       "live",
       {
@@ -716,7 +738,7 @@ describe("createRuntimeLoop", () => {
     expect(snapshot.markets.find((market) => market.id === 10)?.oneSidedFill).toBe(true);
     expect(
       snapshot.result.marketPlans.find((market) => market.marketId === 10)?.nextState
-    ).toBe("Defend");
+    ).toBe("Protect");
   });
 
   it("marks a market toxic after an adverse post-fill price move", async () => {
@@ -822,14 +844,14 @@ describe("createRuntimeLoop", () => {
     expect(portfolioSnapshot.net_inventory_usd).toBe(0);
     expect(JSON.parse(portfolioSnapshot.payload_json).aggregateNetInventoryUsd).toBe(0);
     expect(marketStates).toEqual([
-      { market_id: 10, state: "Score" },
-      { market_id: 11, state: "Defend" },
-      { market_id: 12, state: "Defend" }
+      { market_id: 10, state: "Quote" },
+      { market_id: 11, state: "Protect" },
+      { market_id: 12, state: "Protect" }
     ]);
     expect(marketRegimes).toEqual([
-      { market_id: 10, current_state: "Score", is_boosted: 1, volume24h_usd: 18000 },
-      { market_id: 11, current_state: "Defend", is_boosted: 0, volume24h_usd: 15000 },
-      { market_id: 12, current_state: "Defend", is_boosted: 0, volume24h_usd: 12000 }
+      { market_id: 10, current_state: "Quote", is_boosted: 1, volume24h_usd: 18000 },
+      { market_id: 11, current_state: "Protect", is_boosted: 0, volume24h_usd: 15000 },
+      { market_id: 12, current_state: "Protect", is_boosted: 0, volume24h_usd: 12000 }
     ]);
   });
 });

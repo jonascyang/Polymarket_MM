@@ -3,9 +3,112 @@ import { describe, expect, it } from "vitest";
 import { nextMarketState } from "../src/strategy/state-machine";
 
 describe("nextMarketState", () => {
-  it("moves score markets into defend after a one-sided fill", () => {
+  it("moves observe markets into quote when healthy and eligible", () => {
+    const next = nextMarketState("Observe", {
+      oneSidedFill: false,
+      hasOneSidedBook: false,
+      quoteToFillRatioHigh: false,
+      shouldPause: false,
+      isToxic: false,
+      inventoryUsd: 0,
+      maxInventoryUsd: 15,
+      minutesToExit: 180,
+      riskMode: "Normal",
+      isEligible: true
+    });
+
+    expect(next).toBe("Quote");
+  });
+
+  it("moves quote markets into throttle on excessive quote churn", () => {
+    const next = nextMarketState("Quote", {
+      oneSidedFill: false,
+      hasOneSidedBook: false,
+      quoteToFillRatioHigh: true,
+      shouldPause: false,
+      isToxic: false,
+      inventoryUsd: 0,
+      maxInventoryUsd: 15,
+      minutesToExit: 180,
+      riskMode: "Normal",
+      isEligible: true
+    });
+
+    expect(next).toBe("Throttle");
+  });
+
+  it("moves quote markets into protect on one-sided-book pressure", () => {
+    const next = nextMarketState("Quote", {
+      oneSidedFill: false,
+      hasOneSidedBook: true,
+      quoteToFillRatioHigh: false,
+      shouldPause: false,
+      isToxic: false,
+      inventoryUsd: 0,
+      maxInventoryUsd: 15,
+      minutesToExit: 180,
+      riskMode: "Normal",
+      isEligible: true
+    });
+
+    expect(next).toBe("Protect");
+  });
+
+  it("moves protect markets back into quote once the book normalizes", () => {
+    const next = nextMarketState("Protect", {
+      oneSidedFill: false,
+      hasOneSidedBook: false,
+      quoteToFillRatioHigh: false,
+      shouldPause: false,
+      isToxic: false,
+      inventoryUsd: 0,
+      maxInventoryUsd: 15,
+      minutesToExit: 180,
+      riskMode: "Normal",
+      isEligible: true
+    });
+
+    expect(next).toBe("Quote");
+  });
+
+  it("pauses market-level execution before escalating to a global stop", () => {
+    const paused = nextMarketState("Quote", {
+      oneSidedFill: false,
+      hasOneSidedBook: false,
+      quoteToFillRatioHigh: false,
+      shouldPause: true,
+      isToxic: false,
+      inventoryUsd: 0,
+      maxInventoryUsd: 15,
+      minutesToExit: 180,
+      riskMode: "Normal",
+      isEligible: true
+    });
+
+    expect(paused).toBe("Pause");
+
+    const stopped = nextMarketState("Protect", {
+      oneSidedFill: false,
+      hasOneSidedBook: false,
+      quoteToFillRatioHigh: false,
+      shouldPause: false,
+      isToxic: false,
+      inventoryUsd: 0,
+      maxInventoryUsd: 15,
+      minutesToExit: 180,
+      riskMode: "HardStop",
+      isEligible: true
+    });
+
+    expect(stopped).toBe("Stop");
+  });
+
+  it("keeps legacy score and defend transitions compatible during migration", () => {
     const next = nextMarketState("Score", {
       oneSidedFill: true,
+      hasOneSidedBook: false,
+      quoteToFillRatioHigh: false,
+      shouldPause: false,
       isToxic: false,
       inventoryUsd: 4,
       maxInventoryUsd: 15,
@@ -15,19 +118,5 @@ describe("nextMarketState", () => {
     });
 
     expect(next).toBe("Defend");
-  });
-
-  it("forces exit when the global risk controller triggers a hard stop", () => {
-    const next = nextMarketState("Defend", {
-      oneSidedFill: false,
-      isToxic: false,
-      inventoryUsd: 2,
-      maxInventoryUsd: 15,
-      minutesToExit: 180,
-      riskMode: "HardStop",
-      isEligible: true
-    });
-
-    expect(next).toBe("Exit");
   });
 });
