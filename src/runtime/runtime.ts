@@ -30,6 +30,8 @@ import {
 import { diffOrders, type DiffOrdersResult } from "../execution/reconciler";
 import type { PredictMmConfig } from "../types";
 import { MarketRecorder } from "../recorder/market-recorder";
+import { EventArchive } from "../recorder/event-archive";
+import type { NormalizedBookLevel } from "../recorder/normalizers";
 import { openAnalyticsStore } from "../storage/sqlite";
 import { evaluateRiskMode, type EvaluateRiskInput, type RiskEvaluation } from "../risk/risk-controller";
 import { selectActiveMarkets } from "../strategy/market-selector";
@@ -71,6 +73,11 @@ export type RuntimeMarketInput = MarketCandidate & {
   lastFillMid?: number;
   lastFillSide?: ManagedOrderSide;
   toxicUntilMs?: number;
+  lastSalePrice?: number | null;
+  lastSaleObservedAtMs?: number;
+  tradeAgeMs?: number;
+  bidBook?: NormalizedBookLevel[];
+  askBook?: NormalizedBookLevel[];
 };
 
 export type RuntimeMarketPlan = {
@@ -250,6 +257,20 @@ function parseUsd(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseOptionalNumber(value: string | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function roundMetric(value: number): number {
+  return Number(value.toFixed(12));
+}
+
 function parseWeiDecimal(value: string, decimals = 18): number {
   const isNegative = value.startsWith("-");
   const digits = isNegative ? value.slice(1) : value;
@@ -396,7 +417,7 @@ function getMidPrice(orderbook: PredictOrderbookData): number {
     return bestBid;
   }
 
-  return (bestBid + bestAsk) / 2;
+  return roundMetric((bestBid + bestAsk) / 2);
 }
 
 function getSpread(orderbook: PredictOrderbookData): number {
@@ -407,7 +428,7 @@ function getSpread(orderbook: PredictOrderbookData): number {
     return 1;
   }
 
-  return bestAsk - bestBid;
+  return roundMetric(bestAsk - bestBid);
 }
 
 function hasTwoSidedBook(orderbook: PredictOrderbookData): boolean {
@@ -459,7 +480,9 @@ export function createRuntimeServices(
     respondToHeartbeat:
       dependencies.wsClient?.respondToHeartbeat?.bind(dependencies.wsClient) ?? baseWsClient.respondToHeartbeat.bind(baseWsClient)
   };
-  const recorder = dependencies.recorder ?? new MarketRecorder(database);
+  const recorder = dependencies.recorder ?? new MarketRecorder(database, {
+    archive: config.archiveDir ? new EventArchive(config.archiveDir) : undefined
+  });
 
   return {
     config,
@@ -493,6 +516,10 @@ async function loadRuntimeMarkets(
         orderbookResponse.data
       );
       const lastSaleResponse = await services.restClient.getMarketLastSale(market.id);
+      const lastSaleObservedAtMs = lastSaleResponse.data ? Date.now() : undefined;
+      const lastSalePrice = lastSaleResponse.data
+        ? parseOptionalNumber(lastSaleResponse.data.priceInCurrency)
+        : null;
 
       if (lastSaleResponse.data) {
         services.recorder.recordLastSaleEvent(
@@ -521,6 +548,12 @@ async function loadRuntimeMarkets(
         oneSidedFill: options.fillByMarket?.[market.id] ?? false,
         bestBid: options.bestBidByMarket?.[market.id] ?? normalizedOrderbook.bestBid,
         bestAsk: options.bestAskByMarket?.[market.id] ?? normalizedOrderbook.bestAsk,
+        bidBook: normalizedOrderbook.bids,
+        askBook: normalizedOrderbook.asks,
+        lastSalePrice,
+        lastSaleObservedAtMs,
+        tradeAgeMs:
+          lastSaleObservedAtMs !== undefined ? Date.now() - lastSaleObservedAtMs : undefined,
         ...(market.outcomes.length > 0 ? resolveOutcomeTokenIds(market.outcomes) : {}),
         feeRateBps: market.feeRateBps,
         isNegRisk: market.isNegRisk,

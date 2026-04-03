@@ -95,11 +95,13 @@ function updateMarketFromOrderbook(
 
   market.bestBid = event.bestBid;
   market.bestAsk = event.bestAsk;
+  market.bidBook = event.bids;
+  market.askBook = event.asks;
   market.hasTwoSidedBook = event.bestBid !== null && event.bestAsk !== null;
 
   if (event.bestBid !== null && event.bestAsk !== null) {
-    market.mid = (event.bestBid + event.bestAsk) / 2;
-    market.spread = event.bestAsk - event.bestBid;
+    market.mid = event.mid;
+    market.spread = event.spread;
   } else if (event.bestBid !== null) {
     market.mid = event.bestBid;
   } else if (event.bestAsk !== null) {
@@ -138,6 +140,53 @@ function updateMarketFromOrderbook(
   if ((market.toxicUntilMs ?? 0) <= nowMs) {
     market.isToxic = false;
   }
+}
+
+function estimateQueueAheadShares(
+  state: BootstrappedRuntimeState,
+  order: Pick<ManagedOrder, "marketId" | "side" | "price">
+): number | undefined {
+  const market = state.markets.find((candidate) => candidate.id === order.marketId);
+
+  if (!market) {
+    return undefined;
+  }
+
+  const levels = order.side === "bid" ? market.bidBook : market.askBook;
+
+  if (!levels || levels.length === 0) {
+    return undefined;
+  }
+
+  const queueAhead = levels.reduce((sum, level) => {
+    if (order.side === "bid") {
+      if (level.price > order.price || level.price === order.price) {
+        return sum + level.size;
+      }
+
+      return sum;
+    }
+
+    if (level.price < order.price || level.price === order.price) {
+      return sum + level.size;
+    }
+
+    return sum;
+  }, 0);
+
+  return Number(queueAhead.toFixed(6));
+}
+
+function getTopOfBookDepth(
+  state: BootstrappedRuntimeState,
+  marketId: number
+): { bidDepth1AtFill?: number; askDepth1AtFill?: number } {
+  const market = state.markets.find((candidate) => candidate.id === marketId);
+
+  return {
+    bidDepth1AtFill: market?.bidBook?.[0]?.size,
+    askDepth1AtFill: market?.askBook?.[0]?.size
+  };
 }
 
 function rerunCycle(state: BootstrappedRuntimeState): RuntimeCycleResult {
@@ -234,10 +283,30 @@ function applyWalletEventToState(
   switch (event.kind) {
     case "order_opened":
       state.services.recorder.recordManagedOrder(event.order, "LIVE_OPEN");
+      state.services.recorder.recordOrderEvent({
+        marketId: event.marketId,
+        orderId: event.order.id,
+        eventType: "LIVE_OPEN",
+        logicalSide: event.order.side,
+        price: event.order.price,
+        sizeUsd: event.order.sizeUsd,
+        queueAheadSharesEst: estimateQueueAheadShares(state, event.order),
+        payload: event.payload
+      });
       updatePrivateOpenOrders(state, upsertManagedOrder(state.privateState.normalizedOpenOrders, event.order));
       return;
     case "order_updated":
       state.services.recorder.recordManagedOrder(event.order, "LIVE_UPDATED");
+      state.services.recorder.recordOrderEvent({
+        marketId: event.marketId,
+        orderId: event.order.id,
+        eventType: "LIVE_UPDATED",
+        logicalSide: event.order.side,
+        price: event.order.price,
+        sizeUsd: event.order.sizeUsd,
+        queueAheadSharesEst: estimateQueueAheadShares(state, event.order),
+        payload: event.payload
+      });
       updatePrivateOpenOrders(state, upsertManagedOrder(state.privateState.normalizedOpenOrders, event.order));
       return;
     case "order_cancelled": {
@@ -247,6 +316,16 @@ function applyWalletEventToState(
 
       if (cancelledOrder) {
         state.services.recorder.recordManagedOrder(cancelledOrder, "LIVE_CANCELLED");
+        state.services.recorder.recordOrderEvent({
+          marketId: event.marketId,
+          orderId: event.orderId,
+          eventType: "LIVE_CANCELLED",
+          logicalSide: cancelledOrder.side,
+          price: cancelledOrder.price,
+          sizeUsd: cancelledOrder.sizeUsd,
+          queueAheadSharesEst: estimateQueueAheadShares(state, cancelledOrder),
+          payload: event.payload
+        });
       }
 
       updatePrivateOpenOrders(
@@ -258,18 +337,46 @@ function applyWalletEventToState(
       return;
     }
     case "fill":
+      {
+        const { bidDepth1AtFill, askDepth1AtFill } = getTopOfBookDepth(
+          state,
+          event.marketId
+        );
+        const marketBeforeFill = state.markets.find(
+          (candidate) => candidate.id === event.marketId
+        );
+        const inventoryAfterUsd =
+          event.inventoryUsd ??
+          ((marketBeforeFill?.inventoryUsd ?? 0) + (event.inventoryDeltaUsd ?? 0));
+
       state.services.recorder.recordFillEvent(event.marketId, {
         orderId: event.orderId,
         side: event.side,
         price: event.price,
         sizeUsd: event.sizeUsd,
         inventoryDeltaUsd: event.inventoryDeltaUsd,
-        inventoryUsd: event.inventoryUsd
+        inventoryUsd: event.inventoryUsd,
+        inventoryAfterUsd,
+        midAtFill: marketBeforeFill?.mid,
+        spreadAtFill: marketBeforeFill?.spread,
+        bidDepth1AtFill,
+        askDepth1AtFill
       });
+      }
 
       setMarketInventory(state, event.marketId, {
         inventoryUsd: event.inventoryUsd,
         inventoryDeltaUsd: event.inventoryDeltaUsd
+      });
+
+      state.services.recorder.recordOrderEvent({
+        marketId: event.marketId,
+        orderId: event.orderId,
+        eventType: event.order ? "PARTIAL_FILL" : "FILLED",
+        logicalSide: event.side,
+        price: event.price,
+        sizeUsd: event.sizeUsd,
+        payload: event.payload
       });
 
       {
@@ -322,10 +429,30 @@ function syncSimulatedShadowOrders(
 
   for (const order of applied.cancelledOrders) {
     state.services.recorder.recordManagedOrder(order, "SHADOW_CANCELLED");
+    state.services.recorder.recordOrderEvent({
+      marketId: order.marketId,
+      orderId: order.id,
+      eventType: "SHADOW_CANCELLED",
+      logicalSide: order.side,
+      price: order.price,
+      sizeUsd: order.sizeUsd,
+      queueAheadSharesEst: estimateQueueAheadShares(state, order),
+      payload: order
+    });
   }
 
   for (const order of applied.createdOrders) {
     state.services.recorder.recordManagedOrder(order, "SHADOW_OPEN");
+    state.services.recorder.recordOrderEvent({
+      marketId: order.marketId,
+      orderId: order.id,
+      eventType: "SHADOW_OPEN",
+      logicalSide: order.side,
+      price: order.price,
+      sizeUsd: order.sizeUsd,
+      queueAheadSharesEst: estimateQueueAheadShares(state, order),
+      payload: order
+    });
   }
 
   state.currentOrders = applied.currentOrders;
@@ -366,10 +493,30 @@ function syncLiveOrders(
 
   for (const order of cancelledOrders) {
     state.services.recorder.recordManagedOrder(order, "LIVE_CANCELLED");
+    state.services.recorder.recordOrderEvent({
+      marketId: order.marketId,
+      orderId: order.id,
+      eventType: "LIVE_CANCELLED",
+      logicalSide: order.side,
+      price: order.price,
+      sizeUsd: order.sizeUsd,
+      queueAheadSharesEst: estimateQueueAheadShares(state, order),
+      payload: order
+    });
   }
 
   for (const order of createdOrders) {
     state.services.recorder.recordManagedOrder(order, "LIVE_OPEN");
+    state.services.recorder.recordOrderEvent({
+      marketId: order.marketId,
+      orderId: order.id,
+      eventType: "LIVE_OPEN",
+      logicalSide: order.side,
+      price: order.price,
+      sizeUsd: order.sizeUsd,
+      queueAheadSharesEst: estimateQueueAheadShares(state, order),
+      payload: order
+    });
   }
 
   state.currentOrders = [...survivingOrders, ...createdOrders];
@@ -433,6 +580,7 @@ function recordCycleTelemetry(state: BootstrappedRuntimeState): void {
     0
   );
   const flattenPnlPct = state.options.riskInputOverrides?.flattenPnlPct ?? 0;
+  const nowMs = Date.now();
 
   state.services.recorder.recordRiskEvent(
     "portfolio",
@@ -464,6 +612,29 @@ function recordCycleTelemetry(state: BootstrappedRuntimeState): void {
       plan.nextState,
       plan
     );
+  }
+
+  for (const market of state.markets) {
+    state.services.recorder.recordMarketRegimeSnapshot({
+      marketId: market.id,
+      currentState: market.currentState,
+      minutesToResolution: market.hoursToResolution * 60,
+      isBoosted: market.isBoosted,
+      volume24hUsd: market.volume24hUsd,
+      mid: market.mid,
+      spread: market.spread,
+      tradeAgeMs:
+        market.lastSaleObservedAtMs !== undefined
+          ? nowMs - market.lastSaleObservedAtMs
+          : market.tradeAgeMs,
+      isToxic: market.isToxic,
+      payload: {
+        bestBid: market.bestBid ?? null,
+        bestAsk: market.bestAsk ?? null,
+        bidDepth1: market.bidBook?.[0]?.size ?? null,
+        askDepth1: market.askBook?.[0]?.size ?? null
+      }
+    });
   }
 }
 

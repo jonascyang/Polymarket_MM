@@ -532,12 +532,46 @@ describe("createRuntimeLoop", () => {
     });
 
     const fillRow = database
-      .prepare("SELECT market_id, order_hash, payload_json FROM fills ORDER BY id DESC LIMIT 1")
-      .get() as { market_id: number; order_hash: string; payload_json: string };
+      .prepare(
+        "SELECT market_id, order_hash, side, price, size_usd, inventory_after_usd, mid_at_fill, spread_at_fill, payload_json FROM fills ORDER BY id DESC LIMIT 1"
+      )
+      .get() as {
+      market_id: number;
+      order_hash: string;
+      side: string;
+      price: number;
+      size_usd: number;
+      inventory_after_usd: number;
+      mid_at_fill: number;
+      spread_at_fill: number;
+      payload_json: string;
+    };
+    const orderEventRow = database
+      .prepare(
+        "SELECT event_type, exchange_order_id, logical_side, size_usd FROM order_events ORDER BY id DESC LIMIT 1"
+      )
+      .get() as {
+      event_type: string;
+      exchange_order_id: string;
+      logical_side: string;
+      size_usd: number;
+    };
 
     expect(snapshot.markets.find((market) => market.id === 10)?.inventoryUsd).toBe(2);
     expect(fillRow.market_id).toBe(10);
     expect(fillRow.order_hash).toBe("order-1");
+    expect(fillRow.side).toBe("bid");
+    expect(fillRow.price).toBe(0.45);
+    expect(fillRow.size_usd).toBe(2);
+    expect(fillRow.inventory_after_usd).toBe(2);
+    expect(fillRow.mid_at_fill).toBe(0.46);
+    expect(fillRow.spread_at_fill).toBe(0.02);
+    expect(orderEventRow).toEqual({
+      event_type: "PARTIAL_FILL",
+      exchange_order_id: "order-1",
+      logical_side: "bid",
+      size_usd: 2
+    });
     expect(JSON.parse(fillRow.payload_json).sizeUsd).toBe(2);
   });
 
@@ -761,6 +795,16 @@ describe("createRuntimeLoop", () => {
     const marketStates = database
       .prepare("SELECT market_id, state FROM market_state_events ORDER BY market_id")
       .all() as Array<{ market_id: number; state: string }>;
+    const marketRegimes = database
+      .prepare(
+        "SELECT market_id, current_state, is_boosted, volume24h_usd FROM market_regime_snapshots ORDER BY market_id"
+      )
+      .all() as Array<{
+      market_id: number;
+      current_state: string;
+      is_boosted: number;
+      volume24h_usd: number;
+    }>;
     const portfolioSnapshot = database
       .prepare(
         "SELECT flatten_pnl_pct, net_inventory_usd, payload_json FROM portfolio_snapshots ORDER BY id DESC LIMIT 1"
@@ -781,6 +825,11 @@ describe("createRuntimeLoop", () => {
       { market_id: 10, state: "Score" },
       { market_id: 11, state: "Defend" },
       { market_id: 12, state: "Defend" }
+    ]);
+    expect(marketRegimes).toEqual([
+      { market_id: 10, current_state: "Score", is_boosted: 1, volume24h_usd: 18000 },
+      { market_id: 11, current_state: "Defend", is_boosted: 0, volume24h_usd: 15000 },
+      { market_id: 12, current_state: "Defend", is_boosted: 0, volume24h_usd: 12000 }
     ]);
   });
 });

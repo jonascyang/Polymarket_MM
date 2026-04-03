@@ -8,11 +8,16 @@
     "paper": "tsx src/runtime/run-paper.ts",
     "shadow": "tsx src/runtime/run-shadow.ts",
     "live": "tsx src/runtime/run-live.ts",
+    "collect": "tsx src/runtime/run-collect.ts",
+    "archive": "tsx src/runtime/run-archive.ts",
+    "report": "tsx src/runtime/run-report.ts",
+    "batch": "tsx src/runtime/run-batch.ts",
     "monitor": "tsx src/runtime/run-monitor.ts",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1023.0",
     "@predictdotfun/sdk": "^1.3.2",
     "ethers": "^6.16.0"
   },

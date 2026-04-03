@@ -1,63 +1,100 @@
 # Predict MM
 
-`predict-mm` is a replayable `predict.fun` market-making runtime built around three ideas:
+`predict-mm` is a replayable `predict.fun` market-making runtime with a local analytics store, research collection utilities, and archive/report tooling around the same recorded event stream.
 
-- points-first quoting
-- hard inventory and time exits
-- identical core logic across paper, shadow, and live modes
+## Status
 
-## Environment
+Primary runtime entrypoints are:
 
-Set these variables before running:
-
-- `PREDICT_API_BASE_URL`
-- `PREDICT_WS_URL`
-- `PREDICT_API_KEY`
-- `PREDICT_MM_DB_PATH`
-- `PREDICT_AUTH_BEARER_TOKEN` (optional, enables private account/orders/positions reads and can be reused by `npm run live`)
-- `PREDICT_RUNTIME_INTERVAL_MS` (optional, polling interval override in milliseconds for the runtime loop)
-- `PREDICT_MM_WALLET_PRIVATE_KEY` (required by `npm run live` for signed live order placement; when using a Predict Account this must be the exported Privy Wallet private key)
-- `PREDICT_MM_PREDICT_ACCOUNT` (optional in config, but required when your trading wallet uses a Predict Account; this must be the Predict Account deposit address)
-
-Private trading routes also require a JWT obtained through the official auth flow documented at:
-
-- [Predict auth docs](https://dev.predict.fun/doc-663127)
-- [Predict API explorer](https://api.predict.fun/docs)
-
-When no bearer token is preconfigured, the runtime can also obtain a JWT through the official auth flow if a signer callback is injected by the host application.
-`npm run live` now does this automatically:
-
-- for EOAs, it signs the auth message with `wallet.signMessage`
-- for Predict Accounts, it instantiates the official SDK with `PREDICT_MM_PREDICT_ACCOUNT` and signs the auth message with `OrderBuilder.signPredictAccountMessage`
-
-If `PREDICT_AUTH_BEARER_TOKEN` is already set, the runtime reuses that token instead of re-authenticating.
-
-## Scripts
-
-- `npm test`
-- `npm run typecheck`
 - `npm run paper`
 - `npm run shadow`
 - `npm run live`
 - `npm run monitor`
 
-The three runtime scripts now start a long-lived polling loop, print JSON snapshots on bootstrap and every cycle, and stop cleanly on `SIGINT` / `SIGTERM`.
-`npm run live` also wires the official `@predictdotfun/sdk` order builder into the loop so live create/cancel commands are signed and submitted through the official flow.
-`npm run monitor` reads the local analytics SQLite store and prints a terminal summary of current risk mode, flatten PnL, live private-state summary (`JWT/account/open orders/positions`), active markets, recent orders, recent fills, and replay-derived points metrics. Use `npm run monitor -- --once` for a single snapshot or `npm run monitor -- --interval-ms=2000` to refresh faster.
+Research and archive entrypoints are explicit operational commands:
+
+- `npm run collect` samples open markets, orderbooks, last sales, and regime snapshots into the local SQLite store
+- `npm run report` reads the local SQLite store and prints a research summary
+- `npm run archive` uploads local archive files to R2 when archive and R2 configuration are present
+- `npm run batch` combines collection, reporting, and optional archive upload in one explicit operational command
+
+`docs/plans/` contains planning artifacts. The executable entrypoints are the scripts above plus the runtime modules under `src/runtime/`.
+
+## Environment
+
+Core configuration:
+
+- `PREDICT_API_BASE_URL`
+- `PREDICT_WS_URL`
+- `PREDICT_API_KEY`
+- `PREDICT_MM_DB_PATH`
+
+Optional runtime configuration:
+
+- `PREDICT_AUTH_BEARER_TOKEN`
+- `PREDICT_RUNTIME_INTERVAL_MS`
+- `PREDICT_MM_WALLET_PRIVATE_KEY`
+- `PREDICT_MM_PREDICT_ACCOUNT`
+
+Optional archive configuration:
+
+- `PREDICT_MM_ARCHIVE_DIR`
+- `PREDICT_MM_R2_ENDPOINT`
+- `PREDICT_MM_R2_BUCKET`
+- `PREDICT_MM_R2_ACCESS_KEY_ID`
+- `PREDICT_MM_R2_SECRET_ACCESS_KEY`
+- `PREDICT_MM_R2_PREFIX`
+- `PREDICT_MM_R2_REGION`
+
+Private trading routes require a JWT obtained through the official auth flow documented at:
+
+- [Predict auth docs](https://dev.predict.fun/doc-663127)
+- [Predict API explorer](https://api.predict.fun/docs)
+
+When `PREDICT_AUTH_BEARER_TOKEN` is not set, `npm run live` can obtain a JWT automatically:
+
+- for EOAs, it signs the auth message with `wallet.signMessage`
+- for Predict Accounts, it uses the official `@predictdotfun/sdk` order builder with `PREDICT_MM_PREDICT_ACCOUNT`
+
+## Scripts
+
+- `npm test`: run the Vitest suite
+- `npm run typecheck`: run TypeScript typechecking
+- `npm run paper`: start the paper runtime loop
+- `npm run shadow`: start the shadow runtime loop
+- `npm run live`: start the live runtime loop with signed order placement
+- `npm run monitor`: render a terminal snapshot from the local SQLite store
+- `npm run collect`: run the research sampler once, or continuously unless `--once` is passed
+- `npm run report`: print the research report from the local SQLite store
+- `npm run archive`: upload pending local archive objects to R2
+- `npm run batch`: run the recommended explicit research operations flow once
+
+`paper`, `shadow`, and `live` print JSON bootstrap/cycle snapshots and stop cleanly on `SIGINT` / `SIGTERM`.
+`monitor` supports `--once` and `--interval-ms=...`.
+`collect` supports `--once`, `--interval-ms=...`, and `--first=...`.
+`report` supports `--db=...` and `--json`.
+`archive` supports `--min-age-ms=...`.
+`batch` is intended to accept `--first=...`, `--report-json`, and `--min-age-ms=...`.
+
+Examples:
+
+```bash
+npm run batch -- --first=25
+npm run batch -- --first=25 --report-json
+npm run batch -- --first=25 --report-json --min-age-ms=300000
+```
 
 ## Current modules
 
-- REST, auth, and websocket clients
-- local analytics store
-- market recorder
-- market selection
-- state machine
-- quote engine
-- risk controller
-- execution reconciliation
-- replay summary tooling
+- REST, auth, websocket, and R2 clients
+- local analytics SQLite store
+- market recorder and local event archive
+- runtime loop and live execution wiring
+- monitor, replay, and research report tooling
 
 ## Notes
 
-- The runtime currently provides the execution-policy and orchestration skeleton for `paper`, `shadow`, and `live`.
-- Replay currently supports summary aggregation from recorded events; deeper historical playback can build on top of the same interfaces.
+- `collect`, `report`, and `archive` are not wired into the default `paper` / `shadow` / `live` loops. They are focused operational utilities.
+- `batch` is the recommended explicit research operations entrypoint.
+- Local event archiving is only active when `PREDICT_MM_ARCHIVE_DIR` is configured.
+- Remote archive upload is only active when the R2 configuration is present and `npm run archive` or `npm run batch` is executed.
