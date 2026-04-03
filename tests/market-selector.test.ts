@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { selectActiveMarkets } from "../src/strategy/market-selector";
+import type { MarketCandidate } from "../src/strategy/market-filter";
 
 describe("selectActiveMarkets", () => {
   it("selects up to three active markets and rejects near-resolution tails", () => {
-    const markets = [
+    const markets: MarketCandidate[] = [
       {
         id: 1,
         hoursToResolution: 72,
@@ -43,7 +44,7 @@ describe("selectActiveMarkets", () => {
   });
 
   it("prioritizes core sports over boosted satellite tokens", () => {
-    const result = selectActiveMarkets([
+    const markets: MarketCandidate[] = [
       {
         id: 10,
         hoursToResolution: 96,
@@ -119,7 +120,9 @@ describe("selectActiveMarkets", () => {
         isToxic: false,
         marketPool: "core_sports"
       }
-    ]);
+    ];
+
+    const result = selectActiveMarkets(markets);
 
     expect(result.active.map((market) => market.id)).toEqual([11, 12, 10]);
     expect(result.active.map((market) => market.targetMode)).toEqual([
