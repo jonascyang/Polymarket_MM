@@ -17,7 +17,8 @@ describe("selectActiveMarkets", () => {
         isVisible: true,
         tradingStatus: "OPEN",
         marketVariant: "DEFAULT",
-        isToxic: false
+        isToxic: false,
+        marketPool: "core_sports"
       },
       {
         id: 2,
@@ -31,7 +32,8 @@ describe("selectActiveMarkets", () => {
         isVisible: true,
         tradingStatus: "OPEN",
         marketVariant: "DEFAULT",
-        isToxic: false
+        isToxic: false,
+        marketPool: "sports_match"
       }
     ];
 
@@ -40,7 +42,7 @@ describe("selectActiveMarkets", () => {
     expect(result.active.map((market) => market.id)).toEqual([1]);
   });
 
-  it("assigns one score market and two defend markets by priority", () => {
+  it("prioritizes core sports over boosted satellite tokens", () => {
     const result = selectActiveMarkets([
       {
         id: 10,
@@ -49,12 +51,13 @@ describe("selectActiveMarkets", () => {
         spread: 0.01,
         spreadThreshold: 0.06,
         hasTwoSidedBook: true,
-        volume24hUsd: 18000,
+        volume24hUsd: 30000,
         isBoosted: true,
         isVisible: true,
         tradingStatus: "OPEN",
         marketVariant: "DEFAULT",
-        isToxic: false
+        isToxic: false,
+        marketPool: "satellite_token"
       },
       {
         id: 11,
@@ -63,12 +66,13 @@ describe("selectActiveMarkets", () => {
         spread: 0.02,
         spreadThreshold: 0.06,
         hasTwoSidedBook: true,
-        volume24hUsd: 15000,
+        volume24hUsd: 18000,
         isBoosted: false,
         isVisible: true,
         tradingStatus: "OPEN",
         marketVariant: "DEFAULT",
-        isToxic: false
+        isToxic: false,
+        marketPool: "core_sports"
       },
       {
         id: 12,
@@ -77,30 +81,47 @@ describe("selectActiveMarkets", () => {
         spread: 0.02,
         spreadThreshold: 0.06,
         hasTwoSidedBook: true,
-        volume24hUsd: 12000,
+        volume24hUsd: 15000,
         isBoosted: false,
         isVisible: true,
         tradingStatus: "OPEN",
         marketVariant: "DEFAULT",
-        isToxic: false
+        isToxic: false,
+        marketPool: "core_sports"
       },
       {
         id: 13,
         hoursToResolution: 86,
         mid: 0.51,
-        spread: 0.02,
+        spread: 0.01,
         spreadThreshold: 0.06,
         hasTwoSidedBook: true,
-        volume24hUsd: 8000,
+        volume24hUsd: 50000,
+        isBoosted: true,
+        isVisible: true,
+        tradingStatus: "OPEN",
+        marketVariant: "DEFAULT",
+        isToxic: false,
+        marketPool: "sports_match"
+      },
+      {
+        id: 14,
+        hoursToResolution: 86,
+        mid: 0.51,
+        spread: 0.08,
+        spreadThreshold: 0.06,
+        hasTwoSidedBook: true,
+        volume24hUsd: 60000,
         isBoosted: false,
         isVisible: true,
         tradingStatus: "OPEN",
         marketVariant: "DEFAULT",
-        isToxic: false
+        isToxic: false,
+        marketPool: "core_sports"
       }
     ]);
 
-    expect(result.active.map((market) => market.id)).toEqual([10, 11, 12]);
+    expect(result.active.map((market) => market.id)).toEqual([11, 12, 10]);
     expect(result.active.map((market) => market.targetMode)).toEqual([
       "Score",
       "Defend",

@@ -10,9 +10,23 @@ export type MarketSelectionResult = {
   active: ActiveMarket[];
 };
 
+function getMarketPoolPriority(market: MarketCandidate): number {
+  switch (market.marketPool) {
+    case "core_sports":
+      return 0;
+    case "satellite_token":
+      return 1;
+    default:
+      return 2;
+  }
+}
+
 function compareMarketPriority(left: MarketCandidate, right: MarketCandidate): number {
-  if (left.isBoosted !== right.isBoosted) {
-    return left.isBoosted ? -1 : 1;
+  const poolPriorityDifference =
+    getMarketPoolPriority(left) - getMarketPoolPriority(right);
+
+  if (poolPriorityDifference !== 0) {
+    return poolPriorityDifference;
   }
 
   if (left.volume24hUsd !== right.volume24hUsd) {
