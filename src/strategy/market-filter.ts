@@ -1,3 +1,5 @@
+export type MarketPool = "core_sports" | "satellite_token" | "sports_match" | "other";
+
 export type MarketCandidate = {
   id: number;
   hoursToResolution: number;
@@ -12,12 +14,23 @@ export type MarketCandidate = {
   marketVariant: string;
   isToxic: boolean;
   isLive?: boolean;
+  marketPool?: MarketPool;
 };
+
+const APPROVED_MARKET_POOLS: ReadonlySet<MarketPool> = new Set([
+  "core_sports",
+  "satellite_token"
+]);
+
+function passesPoolFilter(market: MarketCandidate): boolean {
+  return market.marketPool === undefined || APPROVED_MARKET_POOLS.has(market.marketPool);
+}
 
 export function passesStructureFilter(market: MarketCandidate): boolean {
   return (
     market.tradingStatus === "OPEN" &&
     market.isVisible &&
+    passesPoolFilter(market) &&
     market.hoursToResolution >= 48 &&
     market.mid >= 0.1 &&
     market.mid <= 0.9 &&
