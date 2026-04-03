@@ -14,7 +14,11 @@ export type ResearchMarketActivityRow = {
   spread: number | null;
   isBoosted: boolean;
   isToxic: boolean;
+  currentState: string | null;
+  hasOneSidedBook: boolean;
+  quoteCountSinceFill: number;
   segment: "tradable" | "watch" | "toxic_or_thin";
+  health: "active-safe" | "active-risky" | "inactive-or-toxic";
 };
 
 export type ResearchFillRateRow = {
@@ -66,6 +70,7 @@ type ResearchOrderbookRow = {
 export type ResearchMarketProfileRow = {
   marketId: number;
   segment: ResearchMarketActivityRow["segment"];
+  health: ResearchMarketActivityRow["health"];
   volume24hUsd: number | null;
   spread: number | null;
   fillRateAtTouch: number;
@@ -92,6 +97,52 @@ function formatNumber(value: number | null): string {
   }
 
   return Number.isInteger(value) ? String(value) : value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function classifyMarketSegment(input: {
+  isToxic: boolean;
+  spread: number | null;
+  volume24hUsd: number | null;
+  isBoosted: boolean;
+}): ResearchMarketActivityRow["segment"] {
+  if (
+    input.isToxic ||
+    input.spread === null ||
+    input.spread >= 0.05 ||
+    (input.volume24hUsd ?? 0) < 10000
+  ) {
+    return "toxic_or_thin";
+  }
+
+  if ((input.volume24hUsd ?? 0) >= 20000 || input.isBoosted) {
+    return "tradable";
+  }
+
+  return "watch";
+}
+
+function classifyMarketHealth(input: {
+  segment: ResearchMarketActivityRow["segment"];
+  currentState: string | null;
+  hasOneSidedBook: boolean;
+  quoteCountSinceFill: number;
+}): ResearchMarketActivityRow["health"] {
+  if (input.segment === "toxic_or_thin" || input.hasOneSidedBook) {
+    return "inactive-or-toxic";
+  }
+
+  if (
+    input.currentState === "Protect" ||
+    input.currentState === "Throttle" ||
+    input.currentState === "Pause" ||
+    input.currentState === "Defend" ||
+    input.currentState === "Exit" ||
+    input.quoteCountSinceFill >= 6
+  ) {
+    return "active-risky";
+  }
+
+  return "active-safe";
 }
 
 function getCollectionSummary(database: DatabaseSync): ResearchCollectionSummary {
@@ -129,7 +180,11 @@ function getMarketActivity(database: DatabaseSync): ResearchMarketActivityRow[] 
         volume24h_usd,
         spread,
         is_boosted,
-        is_toxic
+        is_toxic,
+        current_state,
+        json_extract(payload_json, '$.bestBid') AS best_bid,
+        json_extract(payload_json, '$.bestAsk') AS best_ask,
+        COALESCE(json_extract(payload_json, '$.quoteCountSinceFill'), 0) AS quote_count_since_fill
       FROM market_regime_snapshots
       WHERE id IN (
         SELECT MAX(id)
@@ -144,21 +199,26 @@ function getMarketActivity(database: DatabaseSync): ResearchMarketActivityRow[] 
     spread: number | null;
     is_boosted: number;
     is_toxic: number;
+    current_state: string | null;
+    best_bid: number | null;
+    best_ask: number | null;
+    quote_count_since_fill: number | null;
   }>;
 
   return rows.map((row) => {
     const isToxic = row.is_toxic === 1;
     const spread = row.spread;
     const volume24hUsd = row.volume24h_usd;
-    let segment: ResearchMarketActivityRow["segment"];
-
-    if (isToxic || spread === null || spread >= 0.05 || (volume24hUsd ?? 0) < 10000) {
-      segment = "toxic_or_thin";
-    } else if ((volume24hUsd ?? 0) >= 20000 || row.is_boosted === 1) {
-      segment = "tradable";
-    } else {
-      segment = "watch";
-    }
+    const segment = classifyMarketSegment({
+      isToxic,
+      spread,
+      volume24hUsd,
+      isBoosted: row.is_boosted === 1
+    });
+    const hasOneSidedBook =
+      (row.best_bid === null && row.best_ask !== null) ||
+      (row.best_bid !== null && row.best_ask === null);
+    const quoteCountSinceFill = row.quote_count_since_fill ?? 0;
 
     return {
       marketId: row.market_id,
@@ -166,7 +226,16 @@ function getMarketActivity(database: DatabaseSync): ResearchMarketActivityRow[] 
       spread,
       isBoosted: row.is_boosted === 1,
       isToxic,
-      segment
+      currentState: row.current_state,
+      hasOneSidedBook,
+      quoteCountSinceFill,
+      segment,
+      health: classifyMarketHealth({
+        segment,
+        currentState: row.current_state,
+        hasOneSidedBook,
+        quoteCountSinceFill
+      })
     };
   });
 }
@@ -676,6 +745,7 @@ function getMarketProfiles(database: DatabaseSync): ResearchMarketProfileRow[] {
       return {
         marketId,
         segment: activityRow?.segment ?? "watch",
+        health: activityRow?.health ?? "active-risky",
         volume24hUsd: activityRow?.volume24hUsd ?? null,
         spread: activityRow?.spread ?? null,
         fillRateAtTouch: fillRate?.fillRateAtTouch ?? 0,
@@ -712,7 +782,7 @@ export function formatResearchReport(report: ResearchReport): string {
   } else {
     for (const row of report.marketActivity) {
       lines.push(
-        `- market=${row.marketId} segment=${row.segment} volume24h=${formatNumber(row.volume24hUsd)} spread=${formatNumber(row.spread)} boosted=${row.isBoosted ? "yes" : "no"} toxic=${row.isToxic ? "yes" : "no"}`
+        `- market=${row.marketId} segment=${row.segment} health=${row.health} state=${row.currentState ?? "-"} volume24h=${formatNumber(row.volume24hUsd)} spread=${formatNumber(row.spread)} oneSided=${row.hasOneSidedBook ? "yes" : "no"} quoteCountSinceFill=${row.quoteCountSinceFill} boosted=${row.isBoosted ? "yes" : "no"} toxic=${row.isToxic ? "yes" : "no"}`
       );
     }
   }
@@ -754,7 +824,7 @@ export function formatResearchReport(report: ResearchReport): string {
   } else {
     for (const row of report.marketProfiles) {
       lines.push(
-        `- market=${row.marketId} segment=${row.segment} volume24h=${formatNumber(row.volume24hUsd)} spread=${formatNumber(row.spread)} fills=${row.fills} fillRateAtTouch=${formatNumber(row.fillRateAtTouch)} fillRateNearTouch=${formatNumber(row.fillRateNearTouch)} adverse30sBps=${formatNumber(row.averageAdverse30sBps)} markout30sUsd=${formatNumber(row.averageMarkout30sUsd)} secondsToFlat=${formatNumber(row.averageSecondsToFlat)}`
+        `- market=${row.marketId} segment=${row.segment} health=${row.health} volume24h=${formatNumber(row.volume24hUsd)} spread=${formatNumber(row.spread)} fills=${row.fills} fillRateAtTouch=${formatNumber(row.fillRateAtTouch)} fillRateNearTouch=${formatNumber(row.fillRateNearTouch)} adverse30sBps=${formatNumber(row.averageAdverse30sBps)} markout30sUsd=${formatNumber(row.averageMarkout30sUsd)} secondsToFlat=${formatNumber(row.averageSecondsToFlat)}`
       );
     }
   }

@@ -147,11 +147,23 @@ describe("buildResearchReport", () => {
     expect(
       report.marketActivity.map((row) => ({
         marketId: row.marketId,
-        segment: row.segment
+        segment: row.segment,
+        health: row.health,
+        quoteCountSinceFill: row.quoteCountSinceFill
       }))
     ).toEqual([
-      { marketId: 101, segment: "tradable" },
-      { marketId: 202, segment: "toxic_or_thin" }
+      {
+        marketId: 101,
+        segment: "tradable",
+        health: "active-safe",
+        quoteCountSinceFill: 0
+      },
+      {
+        marketId: 202,
+        segment: "toxic_or_thin",
+        health: "inactive-or-toxic",
+        quoteCountSinceFill: 0
+      }
     ]);
     expect(report.fillRateByDistanceToTouch).toEqual([
       { distanceTicks: 0, orderCount: 1, filledCount: 1, fillRate: 1 },
@@ -176,6 +188,7 @@ describe("buildResearchReport", () => {
       {
         marketId: 101,
         segment: "tradable",
+        health: "active-safe",
         volume24hUsd: 24000,
         spread: 0.02,
         fillRateAtTouch: 1,
@@ -188,6 +201,7 @@ describe("buildResearchReport", () => {
       {
         marketId: 202,
         segment: "toxic_or_thin",
+        health: "inactive-or-toxic",
         volume24hUsd: 6000,
         spread: 0.06,
         fillRateAtTouch: 0,
@@ -203,7 +217,7 @@ describe("buildResearchReport", () => {
     expect(text).toContain("Fill rate by distance-to-touch");
     expect(text).toContain("Inventory recycle");
     expect(text).toContain("Market profiles");
-    expect(text).toContain("market=101 segment=tradable");
+    expect(text).toContain("market=101 segment=tradable health=active-safe");
   });
 
   it("derives markout from fills and later orderbooks when fill outcomes are absent", () => {
@@ -262,6 +276,7 @@ describe("buildResearchReport", () => {
       {
         marketId: 101,
         segment: "watch",
+        health: "active-risky",
         volume24hUsd: null,
         spread: null,
         fillRateAtTouch: 0,
@@ -270,6 +285,59 @@ describe("buildResearchReport", () => {
         averageMarkout30sUsd: -0.1,
         averageSecondsToFlat: 0,
         fills: 1
+      }
+    ]);
+  });
+
+  it("classifies protect-mode markets with rising quote churn as active-risky", () => {
+    const database = openAnalyticsStore(":memory:");
+    const recorder = new MarketRecorder(database);
+
+    recorder.recordMarketRegimeSnapshot({
+      marketId: 303,
+      currentState: "Protect",
+      isBoosted: false,
+      volume24hUsd: 22000,
+      mid: 0.51,
+      spread: 0.02,
+      tradeAgeMs: 0,
+      isToxic: false,
+      payload: {
+        bestBid: 0.5,
+        bestAsk: 0.52,
+        quoteCountSinceFill: 7
+      }
+    });
+
+    const report = buildResearchReport(database);
+
+    expect(report.marketActivity).toEqual([
+      {
+        marketId: 303,
+        volume24hUsd: 22000,
+        spread: 0.02,
+        isBoosted: false,
+        isToxic: false,
+        currentState: "Protect",
+        hasOneSidedBook: false,
+        quoteCountSinceFill: 7,
+        segment: "tradable",
+        health: "active-risky"
+      }
+    ]);
+    expect(report.marketProfiles).toEqual([
+      {
+        marketId: 303,
+        segment: "tradable",
+        health: "active-risky",
+        volume24hUsd: 22000,
+        spread: 0.02,
+        fillRateAtTouch: 0,
+        fillRateNearTouch: 0,
+        averageAdverse30sBps: 0,
+        averageMarkout30sUsd: 0,
+        averageSecondsToFlat: 0,
+        fills: 0
       }
     ]);
   });
