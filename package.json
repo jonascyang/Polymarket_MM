@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx src/index.ts",
     "paper": "tsx src/runtime/run-paper.ts",
     "shadow": "tsx src/runtime/run-shadow.ts",
     "live": "tsx src/runtime/run-live.ts",
