@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isEligibleMarket,
+  passesWhitelistFilter,
   type MarketCandidate
 } from "../src/strategy/market-filter";
 
@@ -25,6 +26,32 @@ function buildMarket(overrides: Partial<MarketCandidate> = {}): MarketCandidate 
 }
 
 describe("isEligibleMarket", () => {
+  it("only approves supported whitelist pools", () => {
+    expect(
+      passesWhitelistFilter(
+        buildMarket({
+          marketPool: "core_sports"
+        })
+      )
+    ).toBe(true);
+
+    expect(
+      passesWhitelistFilter(
+        buildMarket({
+          marketPool: "satellite_token"
+        })
+      )
+    ).toBe(true);
+
+    expect(
+      passesWhitelistFilter(
+        buildMarket({
+          marketPool: "sports_match"
+        })
+      )
+    ).toBe(false);
+  });
+
   it("allows approved sports outrights", () => {
     expect(
       isEligibleMarket(

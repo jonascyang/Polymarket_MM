@@ -22,7 +22,8 @@ const APPROVED_MARKET_POOLS: ReadonlySet<MarketPool> = new Set([
   "satellite_token"
 ]);
 
-function passesPoolFilter(market: MarketCandidate): boolean {
+export function passesWhitelistFilter(market: MarketCandidate): boolean {
+  // Runtime wiring adds explicit pool labels in later tasks; keep current callers on legacy behavior until then.
   return market.marketPool === undefined || APPROVED_MARKET_POOLS.has(market.marketPool);
 }
 
@@ -30,7 +31,7 @@ export function passesStructureFilter(market: MarketCandidate): boolean {
   return (
     market.tradingStatus === "OPEN" &&
     market.isVisible &&
-    passesPoolFilter(market) &&
+    passesWhitelistFilter(market) &&
     market.hoursToResolution >= 48 &&
     market.mid >= 0.1 &&
     market.mid <= 0.9 &&
