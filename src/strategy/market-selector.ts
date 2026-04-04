@@ -21,7 +21,27 @@ function getMarketPoolPriority(market: MarketCandidate): number {
   }
 }
 
+function getMarketHealthPriority(market: MarketCandidate): number {
+  switch (market.marketHealth) {
+    case "active-safe":
+      return 0;
+    case "active-risky":
+      return 1;
+    case "inactive-or-toxic":
+      return 2;
+    default:
+      return 1;
+  }
+}
+
 function compareMarketPriority(left: MarketCandidate, right: MarketCandidate): number {
+  const healthPriorityDifference =
+    getMarketHealthPriority(left) - getMarketHealthPriority(right);
+
+  if (healthPriorityDifference !== 0) {
+    return healthPriorityDifference;
+  }
+
   const poolPriorityDifference =
     getMarketPoolPriority(left) - getMarketPoolPriority(right);
 

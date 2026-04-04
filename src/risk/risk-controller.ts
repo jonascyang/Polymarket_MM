@@ -73,7 +73,11 @@ export function evaluateRiskMode(input: EvaluateRiskInput): RiskEvaluation {
       reduceOnly: true,
       forceExit: false,
       forceFlatten: false,
-      reason: isInsideExitWindow ? "time-exit-window" : "flatten-pnl-soft-stop"
+      reason: isInsideExitWindow
+        ? "time-exit-window"
+        : hasExceededAggregateInventoryCap
+          ? "aggregate-inventory-cap"
+          : "flatten-pnl-soft-stop"
     };
   }
 

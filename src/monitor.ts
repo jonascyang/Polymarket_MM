@@ -24,9 +24,12 @@ export type ActiveMarketMonitorRow = {
   selectedMode: string | null;
   quoteBid: number | null;
   quoteAsk: number | null;
-  quoteSizeUsd: number | null;
+  quoteBidSizeUsd: number | null;
+  quoteAskSizeUsd: number | null;
   bestBid: number | null;
   bestAsk: number | null;
+  health: string | null;
+  quoteCountSinceFill: number | null;
   recordedAt: string;
 };
 
@@ -150,7 +153,7 @@ export function formatMonitorSnapshot(
     colorizeLabel("Private state:", color, ANSI_CYAN),
     formatPrivateStateSummary(snapshot.privateState),
     colorizeLabel("Replay metrics:", color, ANSI_CYAN),
-    `fills=${snapshot.replay.fills}, score=${formatSeconds(snapshot.replay.scoreSeconds)}, defend=${formatSeconds(snapshot.replay.defendSeconds)}, pointsProxy=${formatDecimal(snapshot.replay.pointsProxy)}, adverse30=${formatBps(snapshot.replay.adverseMove30sBps)}, adverse60=${formatBps(snapshot.replay.adverseMove60sBps)}`,
+    `fills=${snapshot.replay.fills}, quote=${formatSeconds(snapshot.replay.quoteSeconds)}, protect=${formatSeconds(snapshot.replay.protectSeconds)}, pointsProxy=${formatDecimal(snapshot.replay.pointsProxy)}, adverse30=${formatBps(snapshot.replay.adverseMove30sBps)}, adverse60=${formatBps(snapshot.replay.adverseMove60sBps)}`,
     "",
     colorizeLabel(`Active markets (${snapshot.activeMarkets.length}):`, color, ANSI_CYAN)
   ];
@@ -163,8 +166,9 @@ export function formatMonitorSnapshot(
         `- [${market.state}] ${market.marketId} mode=${market.selectedMode ?? "-"} quote=${formatQuote(
           market.quoteBid,
           market.quoteAsk,
-          market.quoteSizeUsd
-        )} book=${formatBook(market.bestBid, market.bestAsk)}`
+          market.quoteBidSizeUsd,
+          market.quoteAskSizeUsd
+        )} book=${formatBook(market.bestBid, market.bestAsk)} health=${market.health ?? "-"} churn=${market.quoteCountSinceFill ?? 0}`
       );
     }
   }
@@ -300,6 +304,7 @@ function selectActiveMarkets(
   limit: number
 ): ActiveMarketMonitorRow[] {
   const latestBooks = selectLatestBooksByMarket(database);
+  const latestRegimes = selectLatestMarketRegimesByMarket(database);
   const rows = database
     .prepare(
       `SELECT market_id, state, payload_json, recorded_at
@@ -321,6 +326,7 @@ function selectActiveMarkets(
     const payload = parseUnknownJson(row.payload_json);
     const quotes = asRecord(payload.quotes);
     const latestBook = latestBooks.get(row.market_id);
+    const latestRegime = latestRegimes.get(row.market_id);
 
     return {
       marketId: row.market_id,
@@ -328,9 +334,12 @@ function selectActiveMarkets(
       selectedMode: asString(payload.selectedMode),
       quoteBid: asNumber(quotes.bid),
       quoteAsk: asNumber(quotes.ask),
-      quoteSizeUsd: asNumber(quotes.sizeUsd),
+      quoteBidSizeUsd: asNumber(quotes.bidSizeUsd),
+      quoteAskSizeUsd: asNumber(quotes.askSizeUsd),
       bestBid: latestBook?.bestBid ?? null,
       bestAsk: latestBook?.bestAsk ?? null,
+      health: latestRegime?.health ?? null,
+      quoteCountSinceFill: latestRegime?.quoteCountSinceFill ?? null,
       recordedAt: row.recorded_at
     };
   });
@@ -358,6 +367,45 @@ function selectLatestBooksByMarket(
       row.market_id,
       { bestBid: row.best_bid, bestAsk: row.best_ask }
     ])
+  );
+}
+
+function selectLatestMarketRegimesByMarket(
+  database: DatabaseSync
+): Map<number, { health: string | null; quoteCountSinceFill: number | null }> {
+  const rows = database
+    .prepare(
+      `SELECT market_id, current_state, payload_json
+       FROM market_regime_snapshots
+       WHERE id IN (
+         SELECT MAX(id) FROM market_regime_snapshots GROUP BY market_id
+       )`
+    )
+    .all() as Array<{
+    market_id: number;
+    current_state: string | null;
+    payload_json: string;
+  }>;
+
+  return new Map(
+    rows.map((row) => {
+      const payload = parseUnknownJson(row.payload_json);
+      const quoteCountSinceFill = asNumber(payload.quoteCountSinceFill);
+      const recordedHealth = asString(payload.marketHealth);
+      const hasOneSidedBook =
+        (asNumber(payload.bestBid) === null && asNumber(payload.bestAsk) !== null) ||
+        (asNumber(payload.bestBid) !== null && asNumber(payload.bestAsk) === null);
+
+      return [
+        row.market_id,
+        {
+          health:
+            recordedHealth ??
+            classifyMonitorHealth(row.current_state, hasOneSidedBook, quoteCountSinceFill ?? 0),
+          quoteCountSinceFill
+        }
+      ];
+    })
   );
 }
 
@@ -529,11 +577,33 @@ function formatPrice(value: number | null): string {
 function formatQuote(
   bid: number | null,
   ask: number | null,
-  sizeUsd: number | null
+  bidSizeUsd: number | null,
+  askSizeUsd: number | null
 ): string {
-  return `${formatPrice(bid)}/${formatPrice(ask)} size=${formatUsd(sizeUsd)}`;
+  return `${formatPrice(bid)}(${formatUsd(bidSizeUsd)})/${formatPrice(ask)}(${formatUsd(askSizeUsd)})`;
 }
 
 function formatBook(bid: number | null, ask: number | null): string {
   return `${formatPrice(bid)}/${formatPrice(ask)}`;
+}
+
+function classifyMonitorHealth(
+  currentState: string | null,
+  hasOneSidedBook: boolean,
+  quoteCountSinceFill: number
+): string {
+  if (hasOneSidedBook || currentState === "Stop" || currentState === "Pause") {
+    return "inactive-or-toxic";
+  }
+
+  if (
+    currentState === "Protect" ||
+    currentState === "Throttle" ||
+    currentState === "Defend" ||
+    quoteCountSinceFill >= 6
+  ) {
+    return "active-risky";
+  }
+
+  return "active-safe";
 }

@@ -65,6 +65,166 @@ const TOXIC_PRICE_JUMP_TICKS = 3;
 const TOXIC_SPREAD_THRESHOLD_RATIO = 0.8;
 const TOXIC_ADVERSE_FILL_TICKS = 2;
 const TOXIC_COOLDOWN_MS = 30_000;
+const MARKET_HEALTH_WINDOW_MS = 5 * 60_000;
+
+type MarketHealthSample = {
+  timestampMs: number;
+  oneSided: boolean;
+};
+
+type MarketHealthWindow = {
+  touchMoveTimestampsMs: number[];
+  tradeTimestampsMs: number[];
+  oneSidedSamples: MarketHealthSample[];
+  lastTradeSignature: string | null;
+};
+
+function createMarketHealthWindow(): MarketHealthWindow {
+  return {
+    touchMoveTimestampsMs: [],
+    tradeTimestampsMs: [],
+    oneSidedSamples: [],
+    lastTradeSignature: null
+  };
+}
+
+function getMarketHealthWindow(
+  windows: Map<number, MarketHealthWindow>,
+  marketId: number
+): MarketHealthWindow {
+  const existing = windows.get(marketId);
+
+  if (existing) {
+    return existing;
+  }
+
+  const created = createMarketHealthWindow();
+  windows.set(marketId, created);
+  return created;
+}
+
+function pruneRollingWindow(window: MarketHealthWindow, nowMs: number): void {
+  const cutoffMs = nowMs - MARKET_HEALTH_WINDOW_MS;
+
+  window.touchMoveTimestampsMs = window.touchMoveTimestampsMs.filter(
+    (timestampMs) => timestampMs >= cutoffMs
+  );
+  window.tradeTimestampsMs = window.tradeTimestampsMs.filter(
+    (timestampMs) => timestampMs >= cutoffMs
+  );
+  window.oneSidedSamples = window.oneSidedSamples.filter(
+    (sample) => sample.timestampMs >= cutoffMs
+  );
+}
+
+function pushOneSidedSample(
+  window: MarketHealthWindow,
+  nowMs: number,
+  oneSided: boolean
+): void {
+  window.oneSidedSamples.push({
+    timestampMs: nowMs,
+    oneSided
+  });
+  pruneRollingWindow(window, nowMs);
+}
+
+function buildLastSaleSignature(input: {
+  quoteType?: string | null;
+  outcome?: string | null;
+  priceInCurrency?: string | null;
+  strategy?: string | null;
+}): string | null {
+  if (
+    !input.quoteType ||
+    !input.outcome ||
+    !input.priceInCurrency ||
+    !input.strategy
+  ) {
+    return null;
+  }
+
+  return [
+    input.quoteType,
+    input.outcome,
+    input.priceInCurrency,
+    input.strategy
+  ].join(":");
+}
+
+function classifyRuntimeMarketHealth(
+  market: BootstrappedRuntimeState["markets"][number]
+): "active-safe" | "active-risky" | "inactive-or-toxic" {
+  if (
+    market.isToxic ||
+    (!market.hasTwoSidedBook && (market.oneSidedRatio ?? 0) >= 0.75)
+  ) {
+    return "inactive-or-toxic";
+  }
+
+  if (
+    market.currentState === "Protect" ||
+    market.currentState === "Throttle" ||
+    market.currentState === "Pause" ||
+    (market.quoteCountSinceFill ?? 0) >= 6
+  ) {
+    return "active-risky";
+  }
+
+  return "active-safe";
+}
+
+function applyRollingMarketHealth(
+  state: BootstrappedRuntimeState,
+  windows: Map<number, MarketHealthWindow>,
+  nowMs: number
+): void {
+  for (const market of state.markets) {
+    const window = getMarketHealthWindow(windows, market.id);
+    pruneRollingWindow(window, nowMs);
+
+    market.marketTradeRatePerMinute = Number(
+      ((window.tradeTimestampsMs.length * 60_000) / MARKET_HEALTH_WINDOW_MS).toFixed(6)
+    );
+    market.touchMoveRatePerMinute = Number(
+      ((window.touchMoveTimestampsMs.length * 60_000) / MARKET_HEALTH_WINDOW_MS).toFixed(6)
+    );
+    market.oneSidedRatio =
+      window.oneSidedSamples.length === 0
+        ? market.hasTwoSidedBook ? 0 : 1
+        : Number(
+            (
+              window.oneSidedSamples.filter((sample) => sample.oneSided).length /
+              window.oneSidedSamples.length
+            ).toFixed(6)
+          );
+    market.marketHealth = classifyRuntimeMarketHealth(market);
+  }
+}
+
+function initializeRollingMarketHealth(
+  state: BootstrappedRuntimeState,
+  nowMs: number
+): Map<number, MarketHealthWindow> {
+  const windows = new Map<number, MarketHealthWindow>();
+
+  for (const market of state.markets) {
+    const window = getMarketHealthWindow(windows, market.id);
+    pushOneSidedSample(window, nowMs, !market.hasTwoSidedBook);
+    window.lastTradeSignature = buildLastSaleSignature({
+      quoteType: market.lastSaleQuoteType,
+      outcome: market.lastSaleOutcome,
+      priceInCurrency:
+        market.lastSalePrice !== null && market.lastSalePrice !== undefined
+          ? String(market.lastSalePrice)
+          : null,
+      strategy: market.lastSaleStrategy
+    });
+  }
+
+  applyRollingMarketHealth(state, windows, nowMs);
+  return windows;
+}
 
 function buildSubscriptionTopics(state: BootstrappedRuntimeState): string[] {
   const topics = state.result.marketPlans.map(
@@ -80,6 +240,7 @@ function buildSubscriptionTopics(state: BootstrappedRuntimeState): string[] {
 
 function updateMarketFromOrderbook(
   state: BootstrappedRuntimeState,
+  windows: Map<number, MarketHealthWindow>,
   topic: string,
   payload: PredictOrderbookData,
   nowMs: number
@@ -91,7 +252,10 @@ function updateMarketFromOrderbook(
     return;
   }
 
+  const healthWindow = getMarketHealthWindow(windows, event.marketId);
   const previousMid = market.mid;
+  const previousBestBid = market.bestBid ?? null;
+  const previousBestAsk = market.bestAsk ?? null;
 
   market.bestBid = event.bestBid;
   market.bestAsk = event.bestAsk;
@@ -113,6 +277,13 @@ function updateMarketFromOrderbook(
   if (event.bestBid === null || event.bestAsk === null) {
     market.spread = 1;
   }
+
+  if (previousBestBid !== event.bestBid || previousBestAsk !== event.bestAsk) {
+    healthWindow.touchMoveTimestampsMs.push(nowMs);
+  }
+
+  pushOneSidedSample(healthWindow, nowMs, event.bestBid === null || event.bestAsk === null);
+  pruneRollingWindow(healthWindow, nowMs);
 
   const priceJumpTicks = Math.abs(market.mid - previousMid) / market.tickSize;
   const spreadNearThreshold =
@@ -267,7 +438,8 @@ function setMarketInventory(
 
 function incrementQuoteCountSinceFill(
   state: BootstrappedRuntimeState,
-  orders: Pick<ManagedOrder, "marketId">[]
+  orders: Pick<ManagedOrder, "marketId">[],
+  nowMs: number
 ): void {
   const quoteCountsByMarket = orders.reduce<Map<number, number>>((accumulator, order) => {
     accumulator.set(order.marketId, (accumulator.get(order.marketId) ?? 0) + 1);
@@ -282,6 +454,7 @@ function incrementQuoteCountSinceFill(
     }
 
     market.quoteCountSinceFill = (market.quoteCountSinceFill ?? 0) + increment;
+    market.lastQuoteUpdateAtMs = nowMs;
   }
 }
 
@@ -439,7 +612,8 @@ function applyWalletEventToState(
 
 function syncSimulatedShadowOrders(
   state: BootstrappedRuntimeState,
-  nextShadowOrderId: () => string
+  nextShadowOrderId: () => string,
+  nowMs: number
 ): void {
   if (state.mode !== "shadow" || state.result.commands.length === 0) {
     return;
@@ -479,7 +653,7 @@ function syncSimulatedShadowOrders(
     });
   }
 
-  incrementQuoteCountSinceFill(state, applied.createdOrders);
+  incrementQuoteCountSinceFill(state, applied.createdOrders, nowMs);
   state.currentOrders = applied.currentOrders;
   state.result = rerunCycle(state);
 }
@@ -487,7 +661,8 @@ function syncSimulatedShadowOrders(
 function syncLiveOrders(
   state: BootstrappedRuntimeState,
   commands: OrderCommand[],
-  createdOrderIds: string[]
+  createdOrderIds: string[],
+  nowMs: number
 ): void {
   const cancelOrderIds = commands
     .filter((command): command is Extract<OrderCommand, { type: "cancel" }> => command.type === "cancel")
@@ -544,7 +719,7 @@ function syncLiveOrders(
     });
   }
 
-  incrementQuoteCountSinceFill(state, createdOrders);
+  incrementQuoteCountSinceFill(state, createdOrders, nowMs);
   state.currentOrders = [...survivingOrders, ...createdOrders];
   state.result = rerunCycle(state);
 }
@@ -552,6 +727,7 @@ function syncLiveOrders(
 async function syncExecutionState(
   state: BootstrappedRuntimeState,
   nextShadowOrderId: () => string,
+  nowMs: number,
   liveExecutor?: Pick<PredictLiveExecutor, "syncCommands">
 ): Promise<void> {
   const commands = state.result.commands;
@@ -561,7 +737,7 @@ async function syncExecutionState(
   }
 
   if (state.mode === "shadow") {
-    syncSimulatedShadowOrders(state, nextShadowOrderId);
+    syncSimulatedShadowOrders(state, nextShadowOrderId, nowMs);
     return;
   }
 
@@ -577,7 +753,47 @@ async function syncExecutionState(
   syncLiveOrders(
     state,
     commands,
-    execution.created.map((order) => order.orderId)
+    execution.created.map((order) => order.orderId),
+    nowMs
+  );
+}
+
+async function refreshPublicLastSales(
+  state: BootstrappedRuntimeState,
+  windows: Map<number, MarketHealthWindow>,
+  nowMs: number
+): Promise<void> {
+  await Promise.all(
+    state.markets.map(async (market) => {
+      const response = await state.services.restClient.getMarketLastSale(market.id);
+      const data = response.data;
+
+      if (!data) {
+        return;
+      }
+
+      const nextSignature = buildLastSaleSignature({
+        quoteType: data.quoteType,
+        outcome: data.outcome,
+        priceInCurrency: data.priceInCurrency,
+        strategy: data.strategy
+      });
+      const healthWindow = getMarketHealthWindow(windows, market.id);
+      const nextPrice = Number(data.priceInCurrency);
+
+      if (nextSignature && nextSignature !== healthWindow.lastTradeSignature) {
+        healthWindow.tradeTimestampsMs.push(nowMs);
+        healthWindow.lastTradeSignature = nextSignature;
+        market.lastSaleObservedAtMs = nowMs;
+        market.lastSalePrice = Number.isFinite(nextPrice) ? nextPrice : market.lastSalePrice;
+        market.lastSaleQuoteType = data.quoteType;
+        market.lastSaleOutcome = data.outcome;
+        market.lastSaleStrategy = data.strategy;
+        state.services.recorder.recordLastSaleEvent(market.id, data);
+      }
+
+      pruneRollingWindow(healthWindow, nowMs);
+    })
   );
 }
 
@@ -600,13 +816,12 @@ async function maybeRefreshPrivateState(
   await refreshBootstrappedRuntimeState(state);
 }
 
-function recordCycleTelemetry(state: BootstrappedRuntimeState): void {
+function recordCycleTelemetry(state: BootstrappedRuntimeState, nowMs: number): void {
   const aggregateNetInventoryUsd = state.markets.reduce(
     (sum, market) => sum + market.inventoryUsd,
     0
   );
   const flattenPnlPct = state.options.riskInputOverrides?.flattenPnlPct ?? 0;
-  const nowMs = Date.now();
 
   state.services.recorder.recordRiskEvent(
     "portfolio",
@@ -659,7 +874,12 @@ function recordCycleTelemetry(state: BootstrappedRuntimeState): void {
         bestAsk: market.bestAsk ?? null,
         bidDepth1: market.bidBook?.[0]?.size ?? null,
         askDepth1: market.askBook?.[0]?.size ?? null,
-        quoteCountSinceFill: market.quoteCountSinceFill ?? 0
+        quoteCountSinceFill: market.quoteCountSinceFill ?? 0,
+        marketTradeRatePerMinute: market.marketTradeRatePerMinute ?? 0,
+        touchMoveRatePerMinute: market.touchMoveRatePerMinute ?? 0,
+        oneSidedRatio: market.oneSidedRatio ?? 0,
+        marketHealth: market.marketHealth ?? null,
+        lastQuoteUpdateAtMs: market.lastQuoteUpdateAtMs ?? null
       }
     });
   }
@@ -683,6 +903,11 @@ export async function createRuntimeLoop(
   options: RuntimeLoopOptions = {}
 ): Promise<RuntimeLoop> {
   const state = await bootstrapConfiguredRuntimeState(mode, config, options);
+  const marketHealthWindows = initializeRollingMarketHealth(
+    state,
+    options.nowMs?.() ?? Date.now()
+  );
+  state.result = rerunCycle(state);
   let cycleCount = 0;
   let subscribedTopics: string[] = [];
   let bootstrapped = false;
@@ -728,16 +953,20 @@ export async function createRuntimeLoop(
       message.data &&
       typeof message.data === "object"
     ) {
+      const nowMs = options.nowMs?.() ?? Date.now();
       updateMarketFromOrderbook(
         state,
+        marketHealthWindows,
         message.topic,
         message.data as PredictOrderbookData,
-        options.nowMs?.() ?? Date.now()
+        nowMs
       );
+      applyRollingMarketHealth(state, marketHealthWindows, nowMs);
       state.result = rerunCycle(state);
-      syncSimulatedShadowOrders(state, nextShadowOrderId);
+      syncSimulatedShadowOrders(state, nextShadowOrderId, nowMs);
       applyMarketPlanStates(state);
-      recordCycleTelemetry(state);
+      applyRollingMarketHealth(state, marketHealthWindows, nowMs);
+      recordCycleTelemetry(state, nowMs);
       cycleCount += 1;
     }
 
@@ -752,10 +981,13 @@ export async function createRuntimeLoop(
       );
 
       if (event) {
+        const nowMs = options.nowMs?.() ?? Date.now();
         applyWalletEventToState(state, event);
+        applyRollingMarketHealth(state, marketHealthWindows, nowMs);
         state.result = rerunCycle(state);
         applyMarketPlanStates(state);
-        recordCycleTelemetry(state);
+        applyRollingMarketHealth(state, marketHealthWindows, nowMs);
+        recordCycleTelemetry(state, nowMs);
         cycleCount += 1;
       }
     }
@@ -782,16 +1014,20 @@ export async function createRuntimeLoop(
       message.data &&
       typeof message.data === "object"
     ) {
+      const nowMs = options.nowMs?.() ?? Date.now();
       updateMarketFromOrderbook(
         state,
+        marketHealthWindows,
         message.topic,
         message.data as PredictOrderbookData,
-        options.nowMs?.() ?? Date.now()
+        nowMs
       );
+      applyRollingMarketHealth(state, marketHealthWindows, nowMs);
       state.result = rerunCycle(state);
-      await syncExecutionState(state, nextShadowOrderId, options.liveExecutor);
+      await syncExecutionState(state, nextShadowOrderId, nowMs, options.liveExecutor);
       applyMarketPlanStates(state);
-      recordCycleTelemetry(state);
+      applyRollingMarketHealth(state, marketHealthWindows, nowMs);
+      recordCycleTelemetry(state, nowMs);
       cycleCount += 1;
     }
 
@@ -806,10 +1042,13 @@ export async function createRuntimeLoop(
       );
 
       if (event) {
+        const nowMs = options.nowMs?.() ?? Date.now();
         applyWalletEventToState(state, event);
+        applyRollingMarketHealth(state, marketHealthWindows, nowMs);
         state.result = rerunCycle(state);
         applyMarketPlanStates(state);
-        recordCycleTelemetry(state);
+        applyRollingMarketHealth(state, marketHealthWindows, nowMs);
+        recordCycleTelemetry(state, nowMs);
         cycleCount += 1;
       }
     }
@@ -819,15 +1058,19 @@ export async function createRuntimeLoop(
 
   const runCycleAsync = (): Promise<RuntimeLoopSnapshot> =>
     runSerialized(async () => {
+      const nowMs = options.nowMs?.() ?? Date.now();
       await maybeRefreshPrivateState(
         state,
         cycleCount,
         options.privateStateRefreshIntervalCycles ?? 3
       );
+      await refreshPublicLastSales(state, marketHealthWindows, nowMs);
+      applyRollingMarketHealth(state, marketHealthWindows, nowMs);
       state.result = rerunCycle(state);
-      await syncExecutionState(state, nextShadowOrderId, options.liveExecutor);
+      await syncExecutionState(state, nextShadowOrderId, nowMs, options.liveExecutor);
       applyMarketPlanStates(state);
-      recordCycleTelemetry(state);
+      applyRollingMarketHealth(state, marketHealthWindows, nowMs);
+      recordCycleTelemetry(state, nowMs);
       cycleCount += 1;
       return getSnapshot();
     });
@@ -853,13 +1096,18 @@ export async function createRuntimeLoop(
       subscribedTopics = buildSubscriptionTopics(state);
 
       return runSerialized(async () => {
+        const nowMs = options.nowMs?.() ?? Date.now();
         if (subscribedTopics.length > 0) {
           await state.services.wsClient.subscribe(1, subscribedTopics);
         }
 
-        await syncExecutionState(state, nextShadowOrderId, options.liveExecutor);
+        await refreshPublicLastSales(state, marketHealthWindows, nowMs);
+        applyRollingMarketHealth(state, marketHealthWindows, nowMs);
+        state.result = rerunCycle(state);
+        await syncExecutionState(state, nextShadowOrderId, nowMs, options.liveExecutor);
         applyMarketPlanStates(state);
-        recordCycleTelemetry(state);
+        applyRollingMarketHealth(state, marketHealthWindows, nowMs);
+        recordCycleTelemetry(state, nowMs);
         cycleCount = 1;
         bootstrapped = true;
         return getSnapshot();
@@ -868,10 +1116,13 @@ export async function createRuntimeLoop(
     handleServerMessage,
     handleServerMessageAsync,
     runCycle(): RuntimeLoopSnapshot {
+      const nowMs = options.nowMs?.() ?? Date.now();
+      applyRollingMarketHealth(state, marketHealthWindows, nowMs);
       state.result = rerunCycle(state);
-      syncSimulatedShadowOrders(state, nextShadowOrderId);
+      syncSimulatedShadowOrders(state, nextShadowOrderId, nowMs);
       applyMarketPlanStates(state);
-      recordCycleTelemetry(state);
+      applyRollingMarketHealth(state, marketHealthWindows, nowMs);
+      recordCycleTelemetry(state, nowMs);
       cycleCount += 1;
       return getSnapshot();
     },

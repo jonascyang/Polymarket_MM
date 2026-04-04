@@ -37,7 +37,7 @@ import { evaluateRiskMode, type EvaluateRiskInput, type RiskEvaluation } from ".
 import { selectActiveMarkets } from "../strategy/market-selector";
 import { buildQuotes, type QuoteMode, type QuotePlan } from "../strategy/quote-engine";
 import { nextMarketState, type MarketState } from "../strategy/state-machine";
-import type { MarketCandidate } from "../strategy/market-filter";
+import type { MarketCandidate, MarketHealth } from "../strategy/market-filter";
 
 export type RuntimeMode = "paper" | "shadow" | "live";
 
@@ -64,6 +64,11 @@ export type RuntimeMarketInput = MarketCandidate & {
   tickSize: number;
   oneSidedFill: boolean;
   quoteCountSinceFill?: number;
+  marketTradeRatePerMinute?: number;
+  touchMoveRatePerMinute?: number;
+  oneSidedRatio?: number;
+  lastQuoteUpdateAtMs?: number;
+  marketHealth?: MarketHealth;
   bestBid?: number | null;
   bestAsk?: number | null;
   tokenId?: string;
@@ -76,6 +81,9 @@ export type RuntimeMarketInput = MarketCandidate & {
   toxicUntilMs?: number;
   lastSalePrice?: number | null;
   lastSaleObservedAtMs?: number;
+  lastSaleQuoteType?: string | null;
+  lastSaleOutcome?: string | null;
+  lastSaleStrategy?: string | null;
   tradeAgeMs?: number;
   bidBook?: NormalizedBookLevel[];
   askBook?: NormalizedBookLevel[];
@@ -93,6 +101,7 @@ export type RuntimeCycleInput = {
   markets: RuntimeMarketInput[];
   currentOrders: ManagedOrder[];
   riskInput: EvaluateRiskInput;
+  nowMs?: number;
   quoteBudgetUsd?: number;
   suppressCreates?: boolean;
   extraCancelOrderIds?: string[];
@@ -548,12 +557,20 @@ async function loadRuntimeMarkets(
         tickSize: getTickSize(market.decimalPrecision),
         oneSidedFill: options.fillByMarket?.[market.id] ?? false,
         quoteCountSinceFill: 0,
+        marketTradeRatePerMinute: 0,
+        touchMoveRatePerMinute: 0,
+        oneSidedRatio: hasTwoSidedBook(orderbookResponse.data) ? 0 : 1,
+        lastQuoteUpdateAtMs: undefined,
+        marketHealth: "active-risky",
         bestBid: options.bestBidByMarket?.[market.id] ?? normalizedOrderbook.bestBid,
         bestAsk: options.bestAskByMarket?.[market.id] ?? normalizedOrderbook.bestAsk,
         bidBook: normalizedOrderbook.bids,
         askBook: normalizedOrderbook.asks,
         lastSalePrice,
         lastSaleObservedAtMs,
+        lastSaleQuoteType: lastSaleResponse.data?.quoteType ?? null,
+        lastSaleOutcome: lastSaleResponse.data?.outcome ?? null,
+        lastSaleStrategy: lastSaleResponse.data?.strategy ?? null,
         tradeAgeMs:
           lastSaleObservedAtMs !== undefined ? Date.now() - lastSaleObservedAtMs : undefined,
         ...(market.outcomes.length > 0 ? resolveOutcomeTokenIds(market.outcomes) : {}),
@@ -585,6 +602,7 @@ function buildCycleInputFromState(state: Omit<BootstrappedRuntimeState, "result"
     mode: state.mode,
     markets: state.markets,
     currentOrders: state.currentOrders,
+    nowMs: Date.now(),
     quoteBudgetUsd: state.options.quoteBudgetUsd,
     suppressCreates: state.suppressCreates,
     extraCancelOrderIds: state.privateState.normalizedOpenOrders
@@ -676,13 +694,29 @@ function shouldEmergencyFlatten(risk: RiskEvaluation): boolean {
 
 const HIGH_QUOTE_CHURN_THRESHOLD = 6;
 const PAUSE_QUOTE_CHURN_THRESHOLD = 12;
+const ACTIVE_MARKET_TRADE_RATE_THRESHOLD = 0.2;
+const ACTIVE_TOUCH_RATE_THRESHOLD = 0.5;
+const THROTTLE_MIN_REFRESH_INTERVAL_MS = 30_000;
+
+function isMarketActiveForChurn(market: RuntimeMarketInput): boolean {
+  return (
+    (market.marketTradeRatePerMinute ?? 0) >= ACTIVE_MARKET_TRADE_RATE_THRESHOLD ||
+    (market.touchMoveRatePerMinute ?? 0) >= ACTIVE_TOUCH_RATE_THRESHOLD
+  );
+}
 
 function hasHighQuoteToFillRatio(market: RuntimeMarketInput): boolean {
-  return (market.quoteCountSinceFill ?? 0) >= HIGH_QUOTE_CHURN_THRESHOLD;
+  return (
+    (market.quoteCountSinceFill ?? 0) >= HIGH_QUOTE_CHURN_THRESHOLD &&
+    isMarketActiveForChurn(market)
+  );
 }
 
 function shouldPauseMarket(market: RuntimeMarketInput): boolean {
-  return (market.quoteCountSinceFill ?? 0) >= PAUSE_QUOTE_CHURN_THRESHOLD;
+  return (
+    (market.quoteCountSinceFill ?? 0) >= PAUSE_QUOTE_CHURN_THRESHOLD &&
+    isMarketActiveForChurn(market)
+  );
 }
 
 function resolveQuoteMode(state: MarketState): QuoteMode | null {
@@ -700,13 +734,38 @@ function resolveQuoteMode(state: MarketState): QuoteMode | null {
   }
 }
 
+function shouldPreserveThrottleQuotes(
+  market: RuntimeMarketInput,
+  nextState: MarketState,
+  nowMs: number
+): boolean {
+  return (
+    nextState === "Throttle" &&
+    market.lastQuoteUpdateAtMs !== undefined &&
+    nowMs - market.lastQuoteUpdateAtMs < THROTTLE_MIN_REFRESH_INTERVAL_MS
+  );
+}
+
+function getCurrentMarketOrders(
+  currentOrders: ManagedOrder[],
+  marketId: number
+): ManagedOrder[] {
+  return currentOrders.filter((order) => order.marketId === marketId);
+}
+
 function buildQuoteOrders(
   market: RuntimeMarketInput,
   nextState: MarketState,
+  currentOrders: ManagedOrder[],
+  nowMs: number,
   aggregateNetInventoryUsd: number | undefined,
   aggregateNetInventoryCapUsd: number | undefined,
   quoteBudgetUsd: number | undefined
 ): ManagedOrder[] {
+  if (shouldPreserveThrottleQuotes(market, nextState, nowMs)) {
+    return getCurrentMarketOrders(currentOrders, market.id);
+  }
+
   const mode = resolveQuoteMode(nextState);
 
   if (mode === null) {
@@ -756,6 +815,7 @@ function buildQuoteOrders(
 export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
   const policy = getExecutionPolicy(input.mode);
   const risk = evaluateRiskMode(input.riskInput);
+  const nowMs = input.nowMs ?? Date.now();
   const aggregateNetInventoryUsd = input.riskInput.aggregateNetInventoryUsd;
   const aggregateNetInventoryCapUsd = input.riskInput.aggregateNetInventoryCapUsd;
 
@@ -824,7 +884,9 @@ export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
         maxInventoryUsd: market.maxInventoryUsd,
         minutesToExit: input.riskInput.minutesToExit ?? Number.POSITIVE_INFINITY,
         riskMode: risk.mode,
-        isEligible: selectedById.has(market.id)
+        isEligible:
+          selectedById.has(market.id) &&
+          market.marketHealth !== "inactive-or-toxic"
       });
     }
 
@@ -855,6 +917,8 @@ export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
       ...buildQuoteOrders(
         market,
         nextState,
+        input.currentOrders,
+        nowMs,
         aggregateNetInventoryUsd,
         aggregateNetInventoryCapUsd,
         input.quoteBudgetUsd

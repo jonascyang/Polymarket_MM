@@ -92,6 +92,29 @@ npm run batch -- --first=25 --report-json --min-age-ms=300000
 - runtime loop and live execution wiring
 - monitor, replay, and research report tooling
 
+## Balanced whitelist maker
+
+The runtime now operates as a balanced whitelist maker:
+
+- `core sports pool`: long-horizon sports winner markets
+- `satellite token pool`: a smaller token launch / FDV market set
+
+Market execution states are:
+
+- `Quote`: normal near-touch quoting
+- `Throttle`: same quoting model with slower refresh cadence and smaller churn
+- `Protect`: single-sided or inventory-relieving quoting only
+- `Pause`: market stays observed but does not place fresh quotes
+- `Stop`: market is fully stopped because portfolio or market risk escalated
+
+Research and monitor outputs expose the current runtime health classification:
+
+- `active-safe`
+- `active-risky`
+- `inactive-or-toxic`
+
+`npm run monitor` now prints health, per-side quote sizes, and replay totals using the same `quote` / `protect` language as the runtime.
+
 ## Notes
 
 - `collect`, `report`, and `archive` are not wired into the default `paper` / `shadow` / `live` loops. They are focused operational utilities.

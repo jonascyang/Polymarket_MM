@@ -10,7 +10,7 @@ export type ReplayEvent =
     }
   | {
       type: "state";
-      state: "Score" | "Defend";
+      state: "Quote" | "Protect";
       durationSeconds: number;
     }
   | {
@@ -76,8 +76,8 @@ export function createEmptyReplaySummary(): ReplaySummary {
   return {
     fills: 0,
     perMarketFills: {},
-    scoreSeconds: 0,
-    defendSeconds: 0,
+    quoteSeconds: 0,
+    protectSeconds: 0,
     flattenPnlUsd: 0,
     flattenPnlPct: 0,
     adverseMove30sBps: 0,
@@ -109,10 +109,10 @@ export function replayEvents(events: ReplayEvent[]): ReplaySummary {
         }
         break;
       case "state":
-        if (event.state === "Score") {
-          summary.scoreSeconds += event.durationSeconds;
+        if (event.state === "Quote") {
+          summary.quoteSeconds += event.durationSeconds;
         } else {
-          summary.defendSeconds += event.durationSeconds;
+          summary.protectSeconds += event.durationSeconds;
         }
         break;
       case "flatten":
@@ -389,6 +389,20 @@ function selectLatestFlattenSnapshot(database: DatabaseSync): {
   };
 }
 
+function normalizeReplayState(state: string): "Quote" | "Protect" | null {
+  switch (state) {
+    case "Quote":
+    case "Throttle":
+    case "Score":
+      return "Quote";
+    case "Protect":
+    case "Defend":
+      return "Protect";
+    default:
+      return null;
+  }
+}
+
 function buildStateReplayEvents(stateRows: MarketStateRow[]): ReplayEvent[] {
   const events: ReplayEvent[] = [];
 
@@ -400,13 +414,15 @@ function buildStateReplayEvents(stateRows: MarketStateRow[]): ReplayEvent[] {
       continue;
     }
 
-    if (current.state !== "Score" && current.state !== "Defend") {
+    const normalizedState = normalizeReplayState(current.state);
+
+    if (normalizedState === null) {
       continue;
     }
 
     events.push({
       type: "state",
-      state: current.state,
+      state: normalizedState,
       durationSeconds: (next.recordedAtMs - current.recordedAtMs) / 1000
     });
   }
@@ -454,7 +470,7 @@ function buildQuoteLifetimeEvent(
   return {
     type: "quote_lifetime",
     durationSeconds,
-    scorable: stateAtOpen === "Score" || stateAtOpen === "Defend",
+    scorable: normalizeReplayState(stateAtOpen ?? "") !== null,
     topOfBook,
     dualSided: false
   };

@@ -38,4 +38,16 @@ describe("evaluateRiskMode", () => {
     expect(result.mode).toBe("SoftStop");
     expect(result.reduceOnly).toBe(true);
   });
+
+  it("triggers soft stop when aggregate inventory breaches the cap", () => {
+    const result = evaluateRiskMode({
+      flattenPnlPct: 0,
+      peakDrawdownPct: 0,
+      aggregateNetInventoryUsd: 45,
+      aggregateNetInventoryCapUsd: 45
+    });
+
+    expect(result.mode).toBe("SoftStop");
+    expect(result.reason).toBe("aggregate-inventory-cap");
+  });
 });

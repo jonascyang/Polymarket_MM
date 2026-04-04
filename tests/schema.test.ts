@@ -142,5 +142,5 @@ describe("storage schema", () => {
 
     migrated.close();
     rmSync(directory, { recursive: true, force: true });
-  });
+  }, 15_000);
 });

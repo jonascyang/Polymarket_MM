@@ -1,8 +1,8 @@
 export type ReplaySummary = {
   fills: number;
   perMarketFills: Record<number, number>;
-  scoreSeconds: number;
-  defendSeconds: number;
+  quoteSeconds: number;
+  protectSeconds: number;
   flattenPnlUsd: number;
   flattenPnlPct: number;
   adverseMove30sBps: number;
@@ -21,7 +21,7 @@ export type ReplaySummaryReport = ReplaySummary & {
 };
 
 export function summarizeReplay(summary: ReplaySummary): ReplaySummaryReport {
-  const totalActiveSeconds = summary.scoreSeconds + summary.defendSeconds;
+  const totalActiveSeconds = summary.quoteSeconds + summary.protectSeconds;
 
   return {
     ...summary,

@@ -11,8 +11,8 @@ describe("replayEvents", () => {
   it("accumulates phase-1 replay metrics from replay events", () => {
     const summary = replayEvents([
       { type: "fill", count: 2, marketId: 10 },
-      { type: "state", state: "Score", durationSeconds: 120 },
-      { type: "state", state: "Defend", durationSeconds: 480 },
+      { type: "state", state: "Quote", durationSeconds: 120 },
+      { type: "state", state: "Protect", durationSeconds: 480 },
       { type: "flatten", flattenPnlUsd: -0.5, flattenPnlPct: -0.01 },
       { type: "adverse_move", horizonSeconds: 30, bps: 200 },
       { type: "adverse_move", horizonSeconds: 60, bps: 400 },
@@ -28,8 +28,8 @@ describe("replayEvents", () => {
     expect(summary).toEqual({
       fills: 2,
       perMarketFills: { 10: 2 },
-      scoreSeconds: 120,
-      defendSeconds: 480,
+      quoteSeconds: 120,
+      protectSeconds: 480,
       flattenPnlUsd: -0.5,
       flattenPnlPct: -0.01,
       adverseMove30sBps: 200,
@@ -48,8 +48,8 @@ describe("summarizeReplay", () => {
     const summary = summarizeReplay({
       fills: 4,
       perMarketFills: { 10: 3, 11: 1 },
-      scoreSeconds: 120,
-      defendSeconds: 480,
+      quoteSeconds: 120,
+      protectSeconds: 480,
       flattenPnlUsd: -0.5,
       flattenPnlPct: -0.01,
       adverseMove30sBps: 200,
@@ -62,7 +62,7 @@ describe("summarizeReplay", () => {
     });
 
     expect(summary.flattenPnlUsd).toBe(-0.5);
-    expect(summary.scoreSeconds).toBe(120);
+    expect(summary.quoteSeconds).toBe(120);
     expect(summary.totalActiveSeconds).toBe(600);
     expect(summary.marketCountWithFills).toBe(2);
     expect(summary.pointsProxyPerActiveHour).toBe(1350);
@@ -77,12 +77,12 @@ describe("buildReplaySummaryFromAnalytics", () => {
       .prepare(
         "INSERT INTO market_state_events (market_id, state, payload_json, recorded_at) VALUES (?, ?, ?, ?)"
       )
-      .run(10, "Score", "{}", "2026-04-02T00:00:00.000Z");
+      .run(10, "Quote", "{}", "2026-04-02T00:00:00.000Z");
     database
       .prepare(
         "INSERT INTO market_state_events (market_id, state, payload_json, recorded_at) VALUES (?, ?, ?, ?)"
       )
-      .run(10, "Defend", "{}", "2026-04-02T00:02:00.000Z");
+      .run(10, "Protect", "{}", "2026-04-02T00:02:00.000Z");
     database
       .prepare(
         "INSERT INTO market_state_events (market_id, state, payload_json, recorded_at) VALUES (?, ?, ?, ?)"
@@ -199,8 +199,8 @@ describe("buildReplaySummaryFromAnalytics", () => {
     expect(summary).toEqual({
       fills: 1,
       perMarketFills: { 10: 1 },
-      scoreSeconds: 120,
-      defendSeconds: 480,
+      quoteSeconds: 120,
+      protectSeconds: 480,
       flattenPnlUsd: -0.5,
       flattenPnlPct: -0.01,
       adverseMove30sBps: 200,

@@ -1,4 +1,5 @@
 export type MarketPool = "core_sports" | "satellite_token" | "sports_match" | "other";
+export type MarketHealth = "active-safe" | "active-risky" | "inactive-or-toxic";
 
 export type MarketCandidate = {
   id: number;
@@ -15,6 +16,7 @@ export type MarketCandidate = {
   isToxic: boolean;
   isLive?: boolean;
   marketPool?: MarketPool;
+  marketHealth?: MarketHealth;
 };
 
 const APPROVED_MARKET_POOLS: ReadonlySet<MarketPool> = new Set([

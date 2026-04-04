@@ -241,6 +241,67 @@ describe("createRuntimeLoop", () => {
     ]);
   });
 
+  it("derives rolling market health from touch moves, one-sided samples, and last-sale changes", async () => {
+    let market10LastSaleCalls = 0;
+
+    const loop = await createRuntimeLoop("shadow", config, {
+      database: openAnalyticsStore(":memory:"),
+      restClient: {
+        ...buildPublicRestClient(),
+        async getMarketLastSale(marketId: number) {
+          if (marketId !== 10) {
+            return buildPublicRestClient().getMarketLastSale();
+          }
+
+          market10LastSaleCalls += 1;
+
+          return {
+            success: true,
+            data: {
+              quoteType: "BID",
+              outcome: "YES",
+              priceInCurrency: market10LastSaleCalls >= 2 ? "0.47" : "0.46",
+              strategy: "LIMIT"
+            }
+          };
+        }
+      },
+      wsClient: {
+        connect() {
+          return {} as WebSocket;
+        },
+        subscribe() {},
+        respondToHeartbeat() {}
+      },
+      nowMs: (() => {
+        let now = 10_000;
+        return () => {
+          now += 10_000;
+          return now;
+        };
+      })()
+    });
+
+    await loop.bootstrap();
+    await loop.handleServerMessageAsync({
+      type: "M",
+      topic: "predictOrderbook/10",
+      data: {
+        marketId: 10,
+        updateTimestampMs: 2,
+        bids: [[0.49, 100]],
+        asks: []
+      }
+    });
+    const snapshot = await loop.runCycleAsync();
+    const market = snapshot.markets.find((candidate) => candidate.id === 10);
+
+    expect(market?.touchMoveRatePerMinute).toBeGreaterThan(0);
+    expect(market?.marketTradeRatePerMinute).toBeGreaterThan(0);
+    expect(market?.oneSidedRatio).toBeGreaterThan(0);
+    expect(market?.marketHealth).toBe("inactive-or-toxic");
+  });
+
   it("subscribes to private wallet events in live mode when a bearer token is available", async () => {
     const subscribed: string[][] = [];
 
@@ -819,13 +880,14 @@ describe("createRuntimeLoop", () => {
       .all() as Array<{ market_id: number; state: string }>;
     const marketRegimes = database
       .prepare(
-        "SELECT market_id, current_state, is_boosted, volume24h_usd FROM market_regime_snapshots ORDER BY market_id"
+        "SELECT market_id, current_state, is_boosted, volume24h_usd, payload_json FROM market_regime_snapshots ORDER BY market_id"
       )
       .all() as Array<{
       market_id: number;
       current_state: string;
       is_boosted: number;
       volume24h_usd: number;
+      payload_json: string;
     }>;
     const portfolioSnapshot = database
       .prepare(
@@ -848,10 +910,36 @@ describe("createRuntimeLoop", () => {
       { market_id: 11, state: "Protect" },
       { market_id: 12, state: "Protect" }
     ]);
-    expect(marketRegimes).toEqual([
-      { market_id: 10, current_state: "Quote", is_boosted: 1, volume24h_usd: 18000 },
-      { market_id: 11, current_state: "Protect", is_boosted: 0, volume24h_usd: 15000 },
-      { market_id: 12, current_state: "Protect", is_boosted: 0, volume24h_usd: 12000 }
+    expect(
+      marketRegimes.map((row) => ({
+        market_id: row.market_id,
+        current_state: row.current_state,
+        is_boosted: row.is_boosted,
+        volume24h_usd: row.volume24h_usd,
+        marketHealth: JSON.parse(row.payload_json).marketHealth
+      }))
+    ).toEqual([
+      {
+        market_id: 10,
+        current_state: "Quote",
+        is_boosted: 1,
+        volume24h_usd: 18000,
+        marketHealth: "active-safe"
+      },
+      {
+        market_id: 11,
+        current_state: "Protect",
+        is_boosted: 0,
+        volume24h_usd: 15000,
+        marketHealth: "active-risky"
+      },
+      {
+        market_id: 12,
+        current_state: "Protect",
+        is_boosted: 0,
+        volume24h_usd: 12000,
+        marketHealth: "active-risky"
+      }
     ]);
   });
 });
