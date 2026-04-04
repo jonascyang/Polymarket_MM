@@ -34,12 +34,30 @@ function getMarketHealthPriority(market: MarketCandidate): number {
   }
 }
 
+function getWhitelistTierPriority(market: MarketCandidate): number {
+  switch (market.whitelistTier) {
+    case "active":
+      return 0;
+    case "watch":
+      return 1;
+    default:
+      return 2;
+  }
+}
+
 function compareMarketPriority(left: MarketCandidate, right: MarketCandidate): number {
   const healthPriorityDifference =
     getMarketHealthPriority(left) - getMarketHealthPriority(right);
 
   if (healthPriorityDifference !== 0) {
     return healthPriorityDifference;
+  }
+
+  const whitelistTierDifference =
+    getWhitelistTierPriority(left) - getWhitelistTierPriority(right);
+
+  if (whitelistTierDifference !== 0) {
+    return whitelistTierDifference;
   }
 
   const poolPriorityDifference =

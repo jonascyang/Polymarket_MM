@@ -572,8 +572,8 @@ describe("runConfiguredRuntimeOnce", () => {
               success: true,
               data: [
                 {
-                  id: 10,
-                  title: "A",
+                  id: 1469,
+                  title: "Oklahoma City Thunder",
                   question: "A?",
                   description: "",
                   tradingStatus: "OPEN",
@@ -582,8 +582,8 @@ describe("runConfiguredRuntimeOnce", () => {
                   isNegRisk: true,
                   isYieldBearing: true,
                   feeRateBps: 200,
-                  oracleQuestionId: "oq-10",
-                  conditionId: "cond-10",
+                  oracleQuestionId: "oq-1469",
+                  conditionId: "cond-1469",
                   resolverAddress: "0x0",
                   outcomes: [
                     { name: "Yes", indexSet: 1, onChainId: "123" },
@@ -593,7 +593,7 @@ describe("runConfiguredRuntimeOnce", () => {
                   shareThreshold: 1,
                   isBoosted: true,
                   polymarketConditionIds: [],
-                  categorySlug: "crypto",
+                  categorySlug: "2026-nba-champion",
                   createdAt: "2026-04-02T00:00:00Z",
                   decimalPrecision: 3,
                   marketVariant: "DEFAULT",
@@ -715,8 +715,8 @@ describe("runConfiguredRuntimeOnce", () => {
               success: true,
               data: [
                 {
-                  id: 10,
-                  title: "A",
+                  id: 1469,
+                  title: "Oklahoma City Thunder",
                   question: "A?",
                   description: "",
                   tradingStatus: "OPEN",
@@ -725,8 +725,8 @@ describe("runConfiguredRuntimeOnce", () => {
                   isNegRisk: true,
                   isYieldBearing: true,
                   feeRateBps: 200,
-                  oracleQuestionId: "oq-10",
-                  conditionId: "cond-10",
+                  oracleQuestionId: "oq-1469",
+                  conditionId: "cond-1469",
                   resolverAddress: "0x0",
                   outcomes: [
                     { name: "Yes", indexSet: 1, onChainId: "123" },
@@ -736,7 +736,7 @@ describe("runConfiguredRuntimeOnce", () => {
                   shareThreshold: 1,
                   isBoosted: true,
                   polymarketConditionIds: [],
-                  categorySlug: "crypto",
+                  categorySlug: "2026-nba-champion",
                   createdAt: "2026-04-02T00:00:00Z",
                   decimalPrecision: 3,
                   marketVariant: "DEFAULT",
@@ -892,8 +892,8 @@ describe("runConfiguredRuntimeOnce", () => {
               success: true,
               data: [
                 {
-                  id: 10,
-                  title: "A",
+                  id: 1469,
+                  title: "Oklahoma City Thunder",
                   question: "A?",
                   description: "",
                   tradingStatus: "OPEN",
@@ -902,15 +902,15 @@ describe("runConfiguredRuntimeOnce", () => {
                   isNegRisk: false,
                   isYieldBearing: false,
                   feeRateBps: 0,
-                  oracleQuestionId: "oq-10",
-                  conditionId: "cond-10",
+                  oracleQuestionId: "oq-1469",
+                  conditionId: "cond-1469",
                   resolverAddress: "0x0",
                   outcomes: [],
                   spreadThreshold: 0.06,
                   shareThreshold: 1,
                   isBoosted: true,
                   polymarketConditionIds: [],
-                  categorySlug: "crypto",
+                  categorySlug: "2026-nba-champion",
                   createdAt: "2026-04-02T00:00:00Z",
                   decimalPrecision: 3,
                   marketVariant: "DEFAULT",
@@ -922,8 +922,8 @@ describe("runConfiguredRuntimeOnce", () => {
                   }
                 },
                 {
-                  id: 11,
-                  title: "B",
+                  id: 1520,
+                  title: "France",
                   question: "B?",
                   description: "",
                   tradingStatus: "OPEN",
@@ -932,15 +932,15 @@ describe("runConfiguredRuntimeOnce", () => {
                   isNegRisk: false,
                   isYieldBearing: false,
                   feeRateBps: 0,
-                  oracleQuestionId: "oq-11",
-                  conditionId: "cond-11",
+                  oracleQuestionId: "oq-1520",
+                  conditionId: "cond-1520",
                   resolverAddress: "0x0",
                   outcomes: [],
                   spreadThreshold: 0.06,
                   shareThreshold: 1,
                   isBoosted: false,
                   polymarketConditionIds: [],
-                  categorySlug: "crypto",
+                  categorySlug: "2026-fifa-world-cup-winner",
                   createdAt: "2026-04-02T00:00:00Z",
                   decimalPrecision: 3,
                   marketVariant: "DEFAULT",
@@ -952,8 +952,8 @@ describe("runConfiguredRuntimeOnce", () => {
                   }
                 },
                 {
-                  id: 12,
-                  title: "C",
+                  id: 9331,
+                  title: "$10B",
                   question: "C?",
                   description: "",
                   tradingStatus: "OPEN",
@@ -962,15 +962,15 @@ describe("runConfiguredRuntimeOnce", () => {
                   isNegRisk: false,
                   isYieldBearing: false,
                   feeRateBps: 0,
-                  oracleQuestionId: "oq-12",
-                  conditionId: "cond-12",
+                  oracleQuestionId: "oq-9331",
+                  conditionId: "cond-9331",
                   resolverAddress: "0x0",
                   outcomes: [],
                   spreadThreshold: 0.06,
                   shareThreshold: 1,
                   isBoosted: false,
                   polymarketConditionIds: [],
-                  categorySlug: "crypto",
+                  categorySlug: "polymarket-fdv-one-day-after-launch",
                   createdAt: "2026-04-02T00:00:00Z",
                   decimalPrecision: 3,
                   marketVariant: "DEFAULT",
@@ -1307,5 +1307,201 @@ describe("runConfiguredRuntimeOnce", () => {
 
     expect(authenticateCallCount).toBe(1);
     expect(result.privateState?.account?.address).toBe("0xsigner");
+  });
+
+  it("assigns runtime whitelist pool and tier metadata during bootstrap", async () => {
+    const state = await bootstrapConfiguredRuntimeState(
+      "paper",
+      {
+        apiBaseUrl: "https://api.predict.fun/v1",
+        wsUrl: "wss://ws.predict.fun/ws",
+        apiKey: "key",
+        dbPath: ":memory:"
+      },
+      {
+        database: openAnalyticsStore(":memory:"),
+        restClient: {
+          async getMarkets() {
+            return {
+              success: true,
+              data: [
+                {
+                  id: 1469,
+                  title: "Oklahoma City Thunder",
+                  question: "A?",
+                  description: "",
+                  tradingStatus: "OPEN",
+                  status: "OPEN",
+                  isVisible: true,
+                  isNegRisk: false,
+                  isYieldBearing: false,
+                  feeRateBps: 0,
+                  oracleQuestionId: "oq-1469",
+                  conditionId: "cond-1469",
+                  resolverAddress: "0x0",
+                  outcomes: [],
+                  spreadThreshold: 0.06,
+                  shareThreshold: 1,
+                  isBoosted: false,
+                  polymarketConditionIds: [],
+                  categorySlug: "2026-nba-champion",
+                  createdAt: "2026-04-02T00:00:00Z",
+                  decimalPrecision: 3,
+                  marketVariant: "DEFAULT",
+                  imageUrl: "",
+                  stats: {
+                    totalLiquidityUsd: 1000,
+                    volume24hUsd: 18000,
+                    volumeTotalUsd: 50000
+                  }
+                },
+                {
+                  id: 1519,
+                  title: "England",
+                  question: "B?",
+                  description: "",
+                  tradingStatus: "OPEN",
+                  status: "OPEN",
+                  isVisible: true,
+                  isNegRisk: false,
+                  isYieldBearing: false,
+                  feeRateBps: 0,
+                  oracleQuestionId: "oq-1519",
+                  conditionId: "cond-1519",
+                  resolverAddress: "0x0",
+                  outcomes: [],
+                  spreadThreshold: 0.06,
+                  shareThreshold: 1,
+                  isBoosted: false,
+                  polymarketConditionIds: [],
+                  categorySlug: "2026-fifa-world-cup-winner",
+                  createdAt: "2026-04-02T00:00:00Z",
+                  decimalPrecision: 3,
+                  marketVariant: "DEFAULT",
+                  imageUrl: "",
+                  stats: {
+                    totalLiquidityUsd: 1000,
+                    volume24hUsd: 12000,
+                    volumeTotalUsd: 50000
+                  }
+                },
+                {
+                  id: 9331,
+                  title: "$10B",
+                  question: "C?",
+                  description: "",
+                  tradingStatus: "OPEN",
+                  status: "OPEN",
+                  isVisible: true,
+                  isNegRisk: false,
+                  isYieldBearing: false,
+                  feeRateBps: 0,
+                  oracleQuestionId: "oq-9331",
+                  conditionId: "cond-9331",
+                  resolverAddress: "0x0",
+                  outcomes: [],
+                  spreadThreshold: 0.06,
+                  shareThreshold: 1,
+                  isBoosted: false,
+                  polymarketConditionIds: [],
+                  categorySlug: "polymarket-fdv-one-day-after-launch",
+                  createdAt: "2026-04-02T00:00:00Z",
+                  decimalPrecision: 3,
+                  marketVariant: "DEFAULT",
+                  imageUrl: "",
+                  stats: {
+                    totalLiquidityUsd: 1000,
+                    volume24hUsd: 22000,
+                    volumeTotalUsd: 50000
+                  }
+                },
+                {
+                  id: 122491,
+                  title: "Pistons vs 76ers",
+                  question: "D?",
+                  description: "",
+                  tradingStatus: "OPEN",
+                  status: "OPEN",
+                  isVisible: true,
+                  isNegRisk: false,
+                  isYieldBearing: false,
+                  feeRateBps: 0,
+                  oracleQuestionId: "oq-122491",
+                  conditionId: "cond-122491",
+                  resolverAddress: "0x0",
+                  outcomes: [],
+                  spreadThreshold: 0.06,
+                  shareThreshold: 1,
+                  isBoosted: true,
+                  polymarketConditionIds: [],
+                  categorySlug: "nba-det-phi-2026-04-04",
+                  createdAt: "2026-04-02T00:00:00Z",
+                  decimalPrecision: 3,
+                  marketVariant: "SPORTS_TEAM_MATCH",
+                  imageUrl: "",
+                  stats: {
+                    totalLiquidityUsd: 1000,
+                    volume24hUsd: 26000,
+                    volumeTotalUsd: 50000
+                  }
+                }
+              ]
+            };
+          },
+          async getMarketOrderbook(marketId: number) {
+            return {
+              success: true,
+              data: {
+                marketId,
+                updateTimestampMs: 1,
+                bids: [[0.45, 100]],
+                asks: [[0.47, 120]]
+              }
+            };
+          },
+          async getMarketLastSale() {
+            return {
+              success: true,
+              data: {
+                quoteType: "BID",
+                outcome: "YES",
+                priceInCurrency: "0.46",
+                strategy: "LIMIT"
+              }
+            };
+          },
+          async getOrders() {
+            return { success: true, data: [] };
+          },
+          async getPositions() {
+            return { success: true, data: [] };
+          },
+          async getAccount() {
+            return {
+              success: true,
+              data: {
+                name: "bot",
+                address: "0xabc",
+                referral: {},
+                points: {}
+              }
+            };
+          }
+        }
+      }
+    );
+
+    expect(
+      state.markets.map((market) => ({
+        id: market.id,
+        marketPool: market.marketPool,
+        whitelistTier: market.whitelistTier
+      }))
+    ).toEqual([
+      { id: 1469, marketPool: "core_sports", whitelistTier: "active" },
+      { id: 1519, marketPool: "core_sports", whitelistTier: "watch" },
+      { id: 9331, marketPool: "satellite_token", whitelistTier: "active" },
+      { id: 122491, marketPool: "other", whitelistTier: undefined }
+    ]);
   });
 });

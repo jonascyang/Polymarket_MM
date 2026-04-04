@@ -37,7 +37,11 @@ import { evaluateRiskMode, type EvaluateRiskInput, type RiskEvaluation } from ".
 import { selectActiveMarkets } from "../strategy/market-selector";
 import { buildQuotes, type QuoteMode, type QuotePlan } from "../strategy/quote-engine";
 import { nextMarketState, type MarketState } from "../strategy/state-machine";
-import type { MarketCandidate, MarketHealth } from "../strategy/market-filter";
+import {
+  resolveRuntimeWhitelistEntry,
+  type MarketCandidate,
+  type MarketHealth
+} from "../strategy/market-filter";
 
 export type RuntimeMode = "paper" | "shadow" | "live";
 
@@ -518,6 +522,7 @@ async function loadRuntimeMarkets(
 
   return Promise.all(
     marketsResponse.data.map(async (market) => {
+      const whitelistEntry = resolveRuntimeWhitelistEntry(market.id);
       services.recorder.recordMarketSnapshot(market);
 
       const orderbookResponse = await services.restClient.getMarketOrderbook(market.id);
@@ -550,6 +555,8 @@ async function loadRuntimeMarkets(
         isVisible: market.isVisible,
         tradingStatus: market.tradingStatus,
         marketVariant: market.marketVariant,
+        marketPool: whitelistEntry?.marketPool ?? "other",
+        whitelistTier: whitelistEntry?.whitelistTier,
         isToxic: false,
         currentState: options.stateByMarket?.[market.id] ?? "Observe",
         inventoryUsd: options.inventoryByMarket?.[market.id] ?? 0,

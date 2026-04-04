@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isEligibleMarket,
   passesWhitelistFilter,
+  resolveRuntimeWhitelistEntry,
   type MarketCandidate
 } from "../src/strategy/market-filter";
 
@@ -21,6 +22,7 @@ function buildMarket(overrides: Partial<MarketCandidate> = {}): MarketCandidate 
     marketVariant: "DEFAULT",
     isToxic: false,
     marketPool: "core_sports",
+    whitelistTier: "active",
     ...overrides
   };
 }
@@ -50,6 +52,26 @@ describe("isEligibleMarket", () => {
         })
       )
     ).toBe(false);
+  });
+
+  it("maps the current runtime whitelist ids into sports and token pools", () => {
+    expect(resolveRuntimeWhitelistEntry(1469)).toEqual({
+      marketPool: "core_sports",
+      whitelistTier: "active"
+    });
+    expect(resolveRuntimeWhitelistEntry(1519)).toEqual({
+      marketPool: "core_sports",
+      whitelistTier: "watch"
+    });
+    expect(resolveRuntimeWhitelistEntry(9331)).toEqual({
+      marketPool: "satellite_token",
+      whitelistTier: "active"
+    });
+    expect(resolveRuntimeWhitelistEntry(993)).toEqual({
+      marketPool: "satellite_token",
+      whitelistTier: "watch"
+    });
+    expect(resolveRuntimeWhitelistEntry(122491)).toBeNull();
   });
 
   it("allows approved sports outrights", () => {

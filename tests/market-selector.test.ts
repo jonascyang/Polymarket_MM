@@ -19,7 +19,8 @@ describe("selectActiveMarkets", () => {
         tradingStatus: "OPEN",
         marketVariant: "DEFAULT",
         isToxic: false,
-        marketPool: "core_sports"
+        marketPool: "core_sports",
+        whitelistTier: "active"
       },
       {
         id: 2,
@@ -34,7 +35,8 @@ describe("selectActiveMarkets", () => {
         tradingStatus: "OPEN",
         marketVariant: "DEFAULT",
         isToxic: false,
-        marketPool: "sports_match"
+        marketPool: "sports_match",
+        whitelistTier: "watch"
       }
     ];
 
@@ -58,7 +60,8 @@ describe("selectActiveMarkets", () => {
         tradingStatus: "OPEN",
         marketVariant: "DEFAULT",
         isToxic: false,
-        marketPool: "satellite_token"
+        marketPool: "satellite_token",
+        whitelistTier: "active"
       },
       {
         id: 11,
@@ -73,7 +76,8 @@ describe("selectActiveMarkets", () => {
         tradingStatus: "OPEN",
         marketVariant: "DEFAULT",
         isToxic: false,
-        marketPool: "core_sports"
+        marketPool: "core_sports",
+        whitelistTier: "active"
       },
       {
         id: 12,
@@ -88,7 +92,8 @@ describe("selectActiveMarkets", () => {
         tradingStatus: "OPEN",
         marketVariant: "DEFAULT",
         isToxic: false,
-        marketPool: "core_sports"
+        marketPool: "core_sports",
+        whitelistTier: "active"
       },
       {
         id: 13,
@@ -103,7 +108,8 @@ describe("selectActiveMarkets", () => {
         tradingStatus: "OPEN",
         marketVariant: "DEFAULT",
         isToxic: false,
-        marketPool: "sports_match"
+        marketPool: "sports_match",
+        whitelistTier: "watch"
       },
       {
         id: 14,
@@ -118,7 +124,8 @@ describe("selectActiveMarkets", () => {
         tradingStatus: "OPEN",
         marketVariant: "DEFAULT",
         isToxic: false,
-        marketPool: "core_sports"
+        marketPool: "core_sports",
+        whitelistTier: "active"
       }
     ];
 
@@ -130,5 +137,46 @@ describe("selectActiveMarkets", () => {
       "Protect",
       "Protect"
     ]);
+  });
+
+  it("prioritizes active whitelist ids ahead of watch ids within the same pool", () => {
+    const markets: MarketCandidate[] = [
+      {
+        id: 1519,
+        hoursToResolution: 96,
+        mid: 0.44,
+        spread: 0.01,
+        spreadThreshold: 0.06,
+        hasTwoSidedBook: true,
+        volume24hUsd: 40000,
+        isBoosted: false,
+        isVisible: true,
+        tradingStatus: "OPEN",
+        marketVariant: "DEFAULT",
+        isToxic: false,
+        marketPool: "core_sports",
+        whitelistTier: "watch"
+      },
+      {
+        id: 1469,
+        hoursToResolution: 96,
+        mid: 0.44,
+        spread: 0.01,
+        spreadThreshold: 0.06,
+        hasTwoSidedBook: true,
+        volume24hUsd: 20000,
+        isBoosted: false,
+        isVisible: true,
+        tradingStatus: "OPEN",
+        marketVariant: "DEFAULT",
+        isToxic: false,
+        marketPool: "core_sports",
+        whitelistTier: "active"
+      }
+    ];
+
+    const result = selectActiveMarkets(markets);
+
+    expect(result.active.map((market) => market.id)).toEqual([1469, 1519]);
   });
 });

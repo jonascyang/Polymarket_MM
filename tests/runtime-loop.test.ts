@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import { createRuntimeLoop, startPollingRuntime } from "../src/runtime/runtime-loop";
 import { openAnalyticsStore } from "../src/storage/sqlite";
 
+const PRIMARY_MARKET_ID = 1469;
+const SECONDARY_MARKET_ID = 1520;
+const TERTIARY_MARKET_ID = 9331;
+
 const config = {
   apiBaseUrl: "https://api.predict.fun/v1",
   wsUrl: "wss://ws.predict.fun/ws",
@@ -21,8 +25,8 @@ function buildPublicRestClient() {
         success: true,
         data: [
           {
-            id: 10,
-            title: "A",
+            id: PRIMARY_MARKET_ID,
+            title: "Oklahoma City Thunder",
             question: "A?",
             description: "",
             tradingStatus: "OPEN",
@@ -31,8 +35,8 @@ function buildPublicRestClient() {
             isNegRisk: false,
             isYieldBearing: false,
             feeRateBps: 0,
-            oracleQuestionId: "oq-10",
-            conditionId: "cond-10",
+            oracleQuestionId: "oq-1469",
+            conditionId: "cond-1469",
             resolverAddress: "0x0",
             outcomes: [
               { name: "Yes", indexSet: 1, onChainId: "101" },
@@ -40,9 +44,9 @@ function buildPublicRestClient() {
             ],
             spreadThreshold: 0.06,
             shareThreshold: 1,
-            isBoosted: true,
+            isBoosted: false,
             polymarketConditionIds: [],
-            categorySlug: "crypto",
+            categorySlug: "2026-nba-champion",
             createdAt: "2026-04-02T00:00:00Z",
             decimalPrecision: 3,
             marketVariant: "DEFAULT",
@@ -54,8 +58,8 @@ function buildPublicRestClient() {
             }
           },
           {
-            id: 11,
-            title: "B",
+            id: SECONDARY_MARKET_ID,
+            title: "France",
             question: "B?",
             description: "",
             tradingStatus: "OPEN",
@@ -64,8 +68,8 @@ function buildPublicRestClient() {
             isNegRisk: false,
             isYieldBearing: false,
             feeRateBps: 0,
-            oracleQuestionId: "oq-11",
-            conditionId: "cond-11",
+            oracleQuestionId: "oq-1520",
+            conditionId: "cond-1520",
             resolverAddress: "0x0",
             outcomes: [
               { name: "Yes", indexSet: 1, onChainId: "111" },
@@ -75,7 +79,7 @@ function buildPublicRestClient() {
             shareThreshold: 1,
             isBoosted: false,
             polymarketConditionIds: [],
-            categorySlug: "crypto",
+            categorySlug: "2026-fifa-world-cup-winner",
             createdAt: "2026-04-02T00:00:00Z",
             decimalPrecision: 3,
             marketVariant: "DEFAULT",
@@ -87,8 +91,8 @@ function buildPublicRestClient() {
             }
           },
           {
-            id: 12,
-            title: "C",
+            id: TERTIARY_MARKET_ID,
+            title: "$10B",
             question: "C?",
             description: "",
             tradingStatus: "OPEN",
@@ -97,8 +101,8 @@ function buildPublicRestClient() {
             isNegRisk: false,
             isYieldBearing: false,
             feeRateBps: 0,
-            oracleQuestionId: "oq-12",
-            conditionId: "cond-12",
+            oracleQuestionId: "oq-9331",
+            conditionId: "cond-9331",
             resolverAddress: "0x0",
             outcomes: [
               { name: "Yes", indexSet: 1, onChainId: "121" },
@@ -108,7 +112,7 @@ function buildPublicRestClient() {
             shareThreshold: 1,
             isBoosted: false,
             polymarketConditionIds: [],
-            categorySlug: "crypto",
+            categorySlug: "polymarket-fdv-one-day-after-launch",
             createdAt: "2026-04-02T00:00:00Z",
             decimalPrecision: 3,
             marketVariant: "DEFAULT",
@@ -193,7 +197,11 @@ describe("createRuntimeLoop", () => {
     const snapshot = await loop.bootstrap();
 
     expect(connectCount).toBe(1);
-    expect(subscribed).toEqual([["predictOrderbook/10", "predictOrderbook/11", "predictOrderbook/12"]]);
+    expect(subscribed).toEqual([[
+      `predictOrderbook/${PRIMARY_MARKET_ID}`,
+      `predictOrderbook/${SECONDARY_MARKET_ID}`,
+      `predictOrderbook/${TERTIARY_MARKET_ID}`
+    ]]);
     expect(snapshot.cycleCount).toBe(1);
   });
 
@@ -213,9 +221,9 @@ describe("createRuntimeLoop", () => {
     const snapshot = await loop.bootstrap();
 
     expect(snapshot.markets.map((market) => [market.id, market.currentState])).toEqual([
-      [10, "Quote"],
-      [11, "Protect"],
-      [12, "Protect"]
+      [PRIMARY_MARKET_ID, "Quote"],
+      [SECONDARY_MARKET_ID, "Protect"],
+      [TERTIARY_MARKET_ID, "Protect"]
     ]);
   });
 
@@ -235,9 +243,9 @@ describe("createRuntimeLoop", () => {
     const snapshot = await loop.bootstrap();
 
     expect(snapshot.markets.map((market) => [market.id, market.quoteCountSinceFill])).toEqual([
-      [10, 2],
-      [11, 2],
-      [12, 2]
+      [PRIMARY_MARKET_ID, 2],
+      [SECONDARY_MARKET_ID, 2],
+      [TERTIARY_MARKET_ID, 2]
     ]);
   });
 
@@ -249,7 +257,7 @@ describe("createRuntimeLoop", () => {
       restClient: {
         ...buildPublicRestClient(),
         async getMarketLastSale(marketId: number) {
-          if (marketId !== 10) {
+          if (marketId !== PRIMARY_MARKET_ID) {
             return buildPublicRestClient().getMarketLastSale();
           }
 
@@ -285,16 +293,16 @@ describe("createRuntimeLoop", () => {
     await loop.bootstrap();
     await loop.handleServerMessageAsync({
       type: "M",
-      topic: "predictOrderbook/10",
+      topic: `predictOrderbook/${PRIMARY_MARKET_ID}`,
       data: {
-        marketId: 10,
+        marketId: PRIMARY_MARKET_ID,
         updateTimestampMs: 2,
         bids: [[0.49, 100]],
         asks: []
       }
     });
     const snapshot = await loop.runCycleAsync();
-    const market = snapshot.markets.find((candidate) => candidate.id === 10);
+    const market = snapshot.markets.find((candidate) => candidate.id === PRIMARY_MARKET_ID);
 
     expect(market?.touchMoveRatePerMinute).toBeGreaterThan(0);
     expect(market?.marketTradeRatePerMinute).toBeGreaterThan(0);
@@ -330,9 +338,9 @@ describe("createRuntimeLoop", () => {
 
     expect(subscribed).toEqual([
       [
-        "predictOrderbook/10",
-        "predictOrderbook/11",
-        "predictOrderbook/12",
+        `predictOrderbook/${PRIMARY_MARKET_ID}`,
+        `predictOrderbook/${SECONDARY_MARKET_ID}`,
+        `predictOrderbook/${TERTIARY_MARKET_ID}`,
         "predictWalletEvents/jwt-token"
       ]
     ]);
@@ -384,9 +392,9 @@ describe("createRuntimeLoop", () => {
         async subscribe() {
           socketRef?.onmessage?.({
             data: JSON.stringify({
-              topic: "predictOrderbook/10",
+              topic: `predictOrderbook/${PRIMARY_MARKET_ID}`,
               data: {
-                marketId: 10,
+                marketId: PRIMARY_MARKET_ID,
                 updateTimestampMs: 2,
                 bids: [[0.45, 100]],
                 asks: [[0.47, 120]]
@@ -430,9 +438,9 @@ describe("createRuntimeLoop", () => {
     loop.handleServerMessage(
       JSON.stringify({
         type: "M",
-        topic: "predictOrderbook/10",
+        topic: `predictOrderbook/${PRIMARY_MARKET_ID}`,
         data: {
-          marketId: 10,
+          marketId: PRIMARY_MARKET_ID,
           updateTimestampMs: 2,
           bids: [[0.49, 100]],
           asks: [[0.5, 120]]
@@ -444,7 +452,7 @@ describe("createRuntimeLoop", () => {
 
     expect(heartbeats).toEqual([123]);
     expect(after.cycleCount).toBe(before.cycleCount + 1);
-    expect(after.markets.find((market) => market.id === 10)?.bestBid).toBe(0.49);
+    expect(after.markets.find((market) => market.id === PRIMARY_MARKET_ID)?.bestBid).toBe(0.49);
   });
 
   it("attaches websocket message handling during bootstrap", async () => {
@@ -468,9 +476,9 @@ describe("createRuntimeLoop", () => {
     socket.onmessage?.({
       data: JSON.stringify({
         type: "M",
-        topic: "predictOrderbook/10",
+        topic: `predictOrderbook/${PRIMARY_MARKET_ID}`,
         data: {
-          marketId: 10,
+          marketId: PRIMARY_MARKET_ID,
           updateTimestampMs: 2,
           bids: [[0.5, 100]],
           asks: [[0.51, 120]]
@@ -482,7 +490,7 @@ describe("createRuntimeLoop", () => {
     const after = loop.getSnapshot();
 
     expect(after.cycleCount).toBe(before.cycleCount + 1);
-    expect(after.markets.find((market) => market.id === 10)?.bestBid).toBe(0.5);
+    expect(after.markets.find((market) => market.id === PRIMARY_MARKET_ID)?.bestBid).toBe(0.5);
   });
 
   it("can rerun a cycle without waiting for a websocket event", async () => {
@@ -589,7 +597,7 @@ describe("createRuntimeLoop", () => {
         currentOrders: [
           {
             id: "order-1",
-            marketId: 10,
+            marketId: PRIMARY_MARKET_ID,
             side: "bid",
             price: 0.45,
             sizeUsd: 5
@@ -604,7 +612,7 @@ describe("createRuntimeLoop", () => {
       topic: "predictWalletEvents/jwt-token",
       data: {
         eventType: "fill",
-        marketId: 10,
+        marketId: PRIMARY_MARKET_ID,
         orderId: "order-1",
         side: "bid",
         price: 0.45,
@@ -640,8 +648,8 @@ describe("createRuntimeLoop", () => {
       size_usd: number;
     };
 
-    expect(snapshot.markets.find((market) => market.id === 10)?.inventoryUsd).toBe(2);
-    expect(fillRow.market_id).toBe(10);
+    expect(snapshot.markets.find((market) => market.id === PRIMARY_MARKET_ID)?.inventoryUsd).toBe(2);
+    expect(fillRow.market_id).toBe(PRIMARY_MARKET_ID);
     expect(fillRow.order_hash).toBe("order-1");
     expect(fillRow.side).toBe("bid");
     expect(fillRow.price).toBe(0.45);
@@ -676,7 +684,7 @@ describe("createRuntimeLoop", () => {
               data: [
                 {
                   id: "order-1",
-                  marketId: 10,
+                  marketId: PRIMARY_MARKET_ID,
                   currency: "USDT",
                   amount: "5000000000000000000",
                   amountFilled: "0",
@@ -709,7 +717,7 @@ describe("createRuntimeLoop", () => {
               data: [
                 {
                   id: "position-1",
-                  market: { id: 10 },
+                  market: { id: PRIMARY_MARKET_ID },
                   outcome: { name: "Yes", indexSet: 1, onChainId: "101" },
                   amount: "1000000000000000000",
                   valueUsd: "3.5",
@@ -755,7 +763,7 @@ describe("createRuntimeLoop", () => {
       openOrders: 1,
       normalizedOpenOrders: 1,
       positions: 1,
-      positionMarketIds: [10],
+      positionMarketIds: [PRIMARY_MARKET_ID],
       hasUnnormalizedOpenOrders: false
     });
   });
@@ -786,7 +794,7 @@ describe("createRuntimeLoop", () => {
       topic: "predictWalletEvents/jwt-token",
       data: {
         eventType: "fill",
-        marketId: 10,
+        marketId: PRIMARY_MARKET_ID,
         orderId: "order-1",
         side: "bid",
         price: 0.45,
@@ -796,9 +804,9 @@ describe("createRuntimeLoop", () => {
       }
     });
 
-    expect(snapshot.markets.find((market) => market.id === 10)?.oneSidedFill).toBe(true);
+    expect(snapshot.markets.find((market) => market.id === PRIMARY_MARKET_ID)?.oneSidedFill).toBe(true);
     expect(
-      snapshot.result.marketPlans.find((market) => market.marketId === 10)?.nextState
+      snapshot.result.marketPlans.find((market) => market.marketId === PRIMARY_MARKET_ID)?.nextState
     ).toBe("Protect");
   });
 
@@ -831,7 +839,7 @@ describe("createRuntimeLoop", () => {
       topic: "predictWalletEvents/jwt-token",
       data: {
         eventType: "fill",
-        marketId: 10,
+        marketId: PRIMARY_MARKET_ID,
         orderId: "order-1",
         side: "bid",
         price: 0.45,
@@ -844,16 +852,16 @@ describe("createRuntimeLoop", () => {
     nowMs += 1_000;
     const snapshot = await loop.handleServerMessageAsync({
       type: "M",
-      topic: "predictOrderbook/10",
+      topic: `predictOrderbook/${PRIMARY_MARKET_ID}`,
       data: {
-        marketId: 10,
+        marketId: PRIMARY_MARKET_ID,
         updateTimestampMs: 2,
         bids: [[0.44, 100]],
         asks: [[0.45, 120]]
       }
     });
 
-    expect(snapshot.markets.find((market) => market.id === 10)?.isToxic).toBe(true);
+    expect(snapshot.markets.find((market) => market.id === PRIMARY_MARKET_ID)?.isToxic).toBe(true);
   });
 
   it("records risk and market-state telemetry for each cycle", async () => {
@@ -906,9 +914,9 @@ describe("createRuntimeLoop", () => {
     expect(portfolioSnapshot.net_inventory_usd).toBe(0);
     expect(JSON.parse(portfolioSnapshot.payload_json).aggregateNetInventoryUsd).toBe(0);
     expect(marketStates).toEqual([
-      { market_id: 10, state: "Quote" },
-      { market_id: 11, state: "Protect" },
-      { market_id: 12, state: "Protect" }
+      { market_id: PRIMARY_MARKET_ID, state: "Quote" },
+      { market_id: SECONDARY_MARKET_ID, state: "Protect" },
+      { market_id: TERTIARY_MARKET_ID, state: "Protect" }
     ]);
     expect(
       marketRegimes.map((row) => ({
@@ -920,21 +928,21 @@ describe("createRuntimeLoop", () => {
       }))
     ).toEqual([
       {
-        market_id: 10,
+        market_id: PRIMARY_MARKET_ID,
         current_state: "Quote",
-        is_boosted: 1,
+        is_boosted: 0,
         volume24h_usd: 18000,
         marketHealth: "active-safe"
       },
       {
-        market_id: 11,
+        market_id: SECONDARY_MARKET_ID,
         current_state: "Protect",
         is_boosted: 0,
         volume24h_usd: 15000,
         marketHealth: "active-risky"
       },
       {
-        market_id: 12,
+        market_id: TERTIARY_MARKET_ID,
         current_state: "Protect",
         is_boosted: 0,
         volume24h_usd: 12000,
