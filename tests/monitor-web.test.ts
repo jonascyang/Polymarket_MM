@@ -175,6 +175,13 @@ describe("renderMonitorWebHtml", () => {
     expect(html).toContain("Portfolio");
     expect(html).toContain("Last updated");
   });
+
+  it("uses fixed 250ms polling for the fast-refresh dashboard mode", () => {
+    const html = renderMonitorWebHtml();
+
+    expect(html).toContain("Auto-refresh: 250ms");
+    expect(html).toContain("setInterval(() => void refreshSnapshot(), 250)");
+  });
 });
 
 describe("parseMonitorWebCliOptions", () => {

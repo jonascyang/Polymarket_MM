@@ -178,7 +178,7 @@ export function renderMonitorWebHtml(options: { title?: string } = {}): string {
           <p>Last updated <span id="last-updated">-</span></p>
         </div>
         <div class="controls">
-          <span class="muted">Auto-refresh: 2s</span>
+          <span class="muted">Auto-refresh: 250ms</span>
           <button id="refresh-button" type="button">Refresh</button>
         </div>
       </div>
@@ -401,7 +401,7 @@ export function renderMonitorWebHtml(options: { title?: string } = {}): string {
       });
 
       void refreshSnapshot();
-      state.timer = setInterval(() => void refreshSnapshot(), 2000);
+      state.timer = setInterval(() => void refreshSnapshot(), 250);
     </script>
   </body>
 </html>`;
