@@ -54,6 +54,23 @@ describe("nextMarketState", () => {
     expect(next).toBe("Protect");
   });
 
+  it("moves quote markets into drain after a one-sided fill when the book is still healthy", () => {
+    const next = nextMarketState("Quote", {
+      oneSidedFill: true,
+      hasOneSidedBook: false,
+      quoteToFillRatioHigh: false,
+      shouldPause: false,
+      isToxic: false,
+      inventoryUsd: 2,
+      maxInventoryUsd: 15,
+      minutesToExit: 180,
+      riskMode: "Normal",
+      isEligible: true
+    });
+
+    expect(next).toBe("Drain");
+  });
+
   it("moves quote markets into protect once inventory reaches 60% of the per-market cap", () => {
     const next = nextMarketState("Quote", {
       oneSidedFill: false,

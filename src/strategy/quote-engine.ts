@@ -1,4 +1,4 @@
-export type QuoteMode = "Quote" | "Throttle" | "Protect" | "Pause" | "Stop";
+export type QuoteMode = "Quote" | "Drain" | "Throttle" | "Protect" | "Pause" | "Stop";
 
 export type QuoteBookLevel = {
   price: number;
@@ -18,6 +18,8 @@ export type BuildQuotesInput = {
   scoreQuoteSizeUsd?: number;
   defendQuoteSizeUsd?: number;
   quoteBudgetUsd?: number;
+  minAskPrice?: number;
+  maxBidPrice?: number;
   aggregateNetInventoryUsd?: number;
   aggregateNetInventoryCapUsd?: number;
 };
@@ -54,6 +56,7 @@ function ceilToTick(value: number, tickSize: number): number {
 function getBaseHalfSpread(mode: QuoteMode, tickSize: number): number {
   switch (mode) {
     case "Quote":
+    case "Drain":
     case "Throttle":
       return tickSize;
     case "Protect":
@@ -99,7 +102,7 @@ function getQuoteSideAvailability(input: BuildQuotesInput): {
   bidEnabled: boolean;
   askEnabled: boolean;
 } {
-  if (input.mode !== "Protect") {
+  if (input.mode !== "Protect" && input.mode !== "Drain") {
     return {
       bidEnabled: true,
       askEnabled: true
@@ -284,15 +287,19 @@ export function isQuotePriceCompetitive(
     0,
     1
   );
+  const bidCap =
+    input.maxBidPrice === undefined ? fallbackBid : Math.min(fallbackBid, input.maxBidPrice);
+  const askFloor =
+    input.minAskPrice === undefined ? fallbackAsk : Math.max(fallbackAsk, input.minAskPrice);
 
   if (side === "bid") {
     const levels = normalizeBookSide(input.bidBook, input.bestBid);
 
     if (levels.length === 0) {
-      return isClosePrice(price, fallbackBid);
+      return isClosePrice(price, bidCap);
     }
 
-    return validBidCandidates(levels, fallbackBid).some((level) =>
+    return validBidCandidates(levels, bidCap).some((level) =>
       isClosePrice(level.price, price)
     );
   }
@@ -300,10 +307,10 @@ export function isQuotePriceCompetitive(
   const levels = normalizeBookSide(input.askBook, input.bestAsk);
 
   if (levels.length === 0) {
-    return isClosePrice(price, fallbackAsk);
+    return isClosePrice(price, askFloor);
   }
 
-  return validAskCandidates(levels, fallbackAsk).some((level) =>
+  return validAskCandidates(levels, askFloor).some((level) =>
     isClosePrice(level.price, price)
   );
 }
@@ -331,16 +338,20 @@ export function buildQuotes(input: BuildQuotesInput): QuotePlan {
     0,
     1
   );
+  const bidCap =
+    input.maxBidPrice === undefined ? fallbackBid : Math.min(fallbackBid, input.maxBidPrice);
+  const askFloor =
+    input.minAskPrice === undefined ? fallbackAsk : Math.max(fallbackAsk, input.minAskPrice);
   const selectedBid = selectBidQuote(
     normalizeBookSide(input.bidBook, input.bestBid),
-    fallbackBid,
+    bidCap,
     fallbackBid,
     provisionalBidSizeUsd,
     input.tickSize
   );
   const selectedAsk = selectAskQuote(
     normalizeBookSide(input.askBook, input.bestAsk),
-    fallbackAsk,
+    askFloor,
     fallbackAsk,
     provisionalAskSizeUsd,
     input.tickSize

@@ -1,6 +1,7 @@
 export type MarketState =
   | "Observe"
   | "Quote"
+  | "Drain"
   | "Throttle"
   | "Protect"
   | "Pause"
@@ -52,6 +53,7 @@ function toLegacyState(nextState: MarketState): MarketState {
   switch (nextState) {
     case "Quote":
       return "Score";
+    case "Drain":
     case "Throttle":
     case "Protect":
       return "Defend";
@@ -84,7 +86,7 @@ export function nextMarketState(
     nextState = state === "Observe" ? "Observe" : "Pause";
   } else {
     const inventoryLimitReached = hasExceededInventoryLimit(input);
-    const oneSidedPressure = input.oneSidedFill || input.hasOneSidedBook === true;
+    const oneSidedBookPressure = input.hasOneSidedBook === true;
 
     if (input.riskMode === "SoftStop") {
       nextState = state === "Observe" ? "Observe" : "Protect";
@@ -95,8 +97,10 @@ export function nextMarketState(
           break;
 
         case "Quote":
-          if (inventoryLimitReached || oneSidedPressure || input.isToxic) {
+          if (inventoryLimitReached || oneSidedBookPressure || input.isToxic) {
             nextState = "Protect";
+          } else if (input.oneSidedFill) {
+            nextState = "Drain";
           } else if (input.quoteToFillRatioHigh) {
             nextState = "Throttle";
           } else {
@@ -104,9 +108,21 @@ export function nextMarketState(
           }
           break;
 
-        case "Throttle":
-          if (inventoryLimitReached || oneSidedPressure || input.isToxic) {
+        case "Drain":
+          if (inventoryLimitReached || oneSidedBookPressure || input.isToxic) {
             nextState = "Protect";
+          } else if (!input.oneSidedFill || Math.abs(input.inventoryUsd) === 0) {
+            nextState = "Quote";
+          } else {
+            nextState = "Drain";
+          }
+          break;
+
+        case "Throttle":
+          if (inventoryLimitReached || oneSidedBookPressure || input.isToxic) {
+            nextState = "Protect";
+          } else if (input.oneSidedFill) {
+            nextState = "Drain";
           } else if (!input.quoteToFillRatioHigh) {
             nextState = "Quote";
           } else {
@@ -117,10 +133,17 @@ export function nextMarketState(
         case "Protect":
           if (
             !input.isToxic &&
-            !oneSidedPressure &&
+            !oneSidedBookPressure &&
             Math.abs(input.inventoryUsd) <= input.maxInventoryUsd * 0.15
           ) {
             nextState = "Quote";
+          } else if (
+            !input.isToxic &&
+            !oneSidedBookPressure &&
+            input.oneSidedFill &&
+            !inventoryLimitReached
+          ) {
+            nextState = "Drain";
           } else {
             nextState = "Protect";
           }

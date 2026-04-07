@@ -849,7 +849,7 @@ describe("createRuntimeLoop", () => {
     });
   });
 
-  it("moves a live market into Protect after a one-sided fill", async () => {
+  it("moves a live market into Drain after a one-sided fill", async () => {
     const loop = await createRuntimeLoop(
       "live",
       {
@@ -888,7 +888,7 @@ describe("createRuntimeLoop", () => {
     expect(snapshot.markets.find((market) => market.id === PRIMARY_MARKET_ID)?.oneSidedFill).toBe(true);
     expect(
       snapshot.result.marketPlans.find((market) => market.marketId === PRIMARY_MARKET_ID)?.nextState
-    ).toBe("Protect");
+    ).toBe("Drain");
   });
 
   it("marks a market toxic after an adverse post-fill price move", async () => {

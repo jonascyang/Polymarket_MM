@@ -435,6 +435,7 @@ function setMarketInventory(
     market.oneSidedFill = false;
     market.lastFillMid = undefined;
     market.lastFillSide = undefined;
+    market.lastFillPrice = undefined;
   }
 
   state.privateState.inventoryByMarket[marketId] = market.inventoryUsd;
@@ -586,6 +587,7 @@ function applyWalletEventToState(
             market.oneSidedFill = true;
             market.lastFillMid = market.mid;
             market.lastFillSide = event.side;
+            market.lastFillPrice = event.price;
           }
         }
       }

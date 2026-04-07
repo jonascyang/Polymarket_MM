@@ -158,6 +158,55 @@ describe("buildQuotes", () => {
     expect(quotes.askSizeUsd).toBeGreaterThan(0);
   });
 
+  it("keeps only the ask active in drain mode when inventory is long", () => {
+    const quotes = buildQuotes({
+      mode: "Drain",
+      fairValue: 0.5,
+      inventoryUsd: 4,
+      maxInventoryUsd: 15,
+      tickSize: 0.001,
+      bestBid: 0.499,
+      bestAsk: 0.501
+    });
+
+    expect(quotes.bidSizeUsd).toBe(0);
+    expect(quotes.askSizeUsd).toBeGreaterThan(0);
+  });
+
+  it("does not place a drain ask below the configured break-even floor", () => {
+    const quotes = buildQuotes({
+      mode: "Drain",
+      fairValue: 0.5,
+      inventoryUsd: 4,
+      maxInventoryUsd: 15,
+      tickSize: 0.001,
+      askBook: [
+        { price: 0.501, size: 20 },
+        { price: 0.502, size: 20 }
+      ],
+      minAskPrice: 0.503
+    });
+
+    expect(quotes.askSizeUsd).toBe(0);
+  });
+
+  it("does not place a drain bid above the configured break-even cap", () => {
+    const quotes = buildQuotes({
+      mode: "Drain",
+      fairValue: 0.5,
+      inventoryUsd: -4,
+      maxInventoryUsd: 15,
+      tickSize: 0.001,
+      bidBook: [
+        { price: 0.499, size: 20 },
+        { price: 0.498, size: 20 }
+      ],
+      maxBidPrice: 0.497
+    });
+
+    expect(quotes.bidSizeUsd).toBe(0);
+  });
+
   it("stops quoting the missing side when protect mode sees a one-sided book", () => {
     const quotes = buildQuotes({
       mode: "Protect",

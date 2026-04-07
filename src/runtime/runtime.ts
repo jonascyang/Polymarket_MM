@@ -88,6 +88,7 @@ export type RuntimeMarketInput = MarketCandidate & {
   isYieldBearing?: boolean;
   lastFillMid?: number;
   lastFillSide?: ManagedOrderSide;
+  lastFillPrice?: number;
   toxicUntilMs?: number;
   lastSalePrice?: number | null;
   lastSaleObservedAtMs?: number;
@@ -101,7 +102,7 @@ export type RuntimeMarketInput = MarketCandidate & {
 
 export type RuntimeMarketPlan = {
   marketId: number;
-  selectedMode: "Quote" | "Protect";
+  selectedMode: "Quote" | "Drain" | "Protect";
   nextState: MarketState;
   quotes: QuotePlan | null;
 };
@@ -285,6 +286,18 @@ function parseOptionalNumber(value: string | undefined): number | null {
   const parsed = Number(value);
 
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function floorToTick(value: number, tickSize: number): number {
+  return Math.floor(value / tickSize) * tickSize;
+}
+
+function ceilToTick(value: number, tickSize: number): number {
+  return Math.ceil(value / tickSize) * tickSize;
 }
 
 function roundMetric(value: number): number {
@@ -811,9 +824,78 @@ function getPortfolioUtilizationMultiplier(privateState?: RuntimePrivateState): 
   return HIGH_UTILIZATION_SIZE_MULTIPLIER;
 }
 
+function getDrainPriceBounds(
+  market: RuntimeMarketInput,
+  privateState?: RuntimePrivateState
+): { minAskPrice?: number; maxBidPrice?: number } {
+  if (market.inventoryUsd === 0) {
+    return {};
+  }
+
+  const entryBuffer = market.tickSize;
+  const matchingPositions = (privateState?.positions ?? []).filter((position) => {
+    if (position.market.id !== market.id) {
+      return false;
+    }
+
+    const outcomeName = position.outcome.name.trim().toLowerCase();
+
+    return market.inventoryUsd > 0 ? outcomeName !== "no" : outcomeName === "no";
+  });
+
+  let entryPrice: number | undefined;
+
+  if (matchingPositions.length > 0) {
+    let weightedEntryPrice = 0;
+    let totalAmount = 0;
+
+    for (const position of matchingPositions) {
+      const amount = Math.abs(parseWeiDecimal(position.amount));
+
+      if (amount <= 0) {
+        continue;
+      }
+
+      weightedEntryPrice += amount * parseUsd(position.averageBuyPriceUsd);
+      totalAmount += amount;
+    }
+
+    if (totalAmount > 0) {
+      entryPrice = weightedEntryPrice / totalAmount;
+    }
+  }
+
+  if (entryPrice === undefined && market.lastFillPrice !== undefined) {
+    entryPrice = market.lastFillPrice;
+  }
+
+  if (entryPrice === undefined) {
+    return {};
+  }
+
+  if (market.inventoryUsd > 0) {
+    return {
+      minAskPrice: clamp(
+        ceilToTick(entryPrice + entryBuffer, market.tickSize),
+        0,
+        1
+      )
+    };
+  }
+
+  return {
+    maxBidPrice: clamp(
+      floorToTick((1 - entryPrice) - entryBuffer, market.tickSize),
+      0,
+      1
+    )
+  };
+}
+
 function resolveQuoteMode(state: MarketState): QuoteMode | null {
   switch (state) {
     case "Quote":
+    case "Drain":
     case "Throttle":
     case "Protect":
       return state;
@@ -910,8 +992,9 @@ function buildQuoteOrders(
     bestAsk: market.bestAsk,
     bidBook: market.bidBook,
     askBook: market.askBook,
-    scoreQuoteSizeUsd: (mode === "Quote" ? 6 : 4) * getPortfolioUtilizationMultiplier(privateState),
+    scoreQuoteSizeUsd: (mode === "Quote" || mode === "Drain" ? 6 : 4) * getPortfolioUtilizationMultiplier(privateState),
     defendQuoteSizeUsd: 4 * getPortfolioUtilizationMultiplier(privateState),
+    ...getDrainPriceBounds(market, privateState),
     aggregateNetInventoryUsd,
     aggregateNetInventoryCapUsd,
     quoteBudgetUsd
@@ -1038,8 +1121,9 @@ export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
           bestAsk: market.bestAsk,
           bidBook: market.bidBook,
           askBook: market.askBook,
-          scoreQuoteSizeUsd: (quoteMode === "Quote" ? 6 : 4) * getPortfolioUtilizationMultiplier(input.privateState),
+          scoreQuoteSizeUsd: (quoteMode === "Quote" || quoteMode === "Drain" ? 6 : 4) * getPortfolioUtilizationMultiplier(input.privateState),
           defendQuoteSizeUsd: 4 * getPortfolioUtilizationMultiplier(input.privateState),
+          ...getDrainPriceBounds(market, input.privateState),
           aggregateNetInventoryUsd,
           aggregateNetInventoryCapUsd,
           quoteBudgetUsd: input.quoteBudgetUsd
@@ -1048,7 +1132,7 @@ export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
 
     marketPlans.push({
       marketId: market.id,
-      selectedMode: selectedMarket.targetMode,
+      selectedMode: nextState === "Drain" ? "Drain" : selectedMarket.targetMode,
       nextState,
       quotes
     });
