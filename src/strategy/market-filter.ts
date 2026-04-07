@@ -21,6 +21,7 @@ export type MarketCandidate = {
   marketVariant: string;
   isToxic: boolean;
   isLive?: boolean;
+  inventoryUsd?: number;
   marketPool?: MarketPool;
   marketHealth?: MarketHealth;
   whitelistTier?: WhitelistTier;

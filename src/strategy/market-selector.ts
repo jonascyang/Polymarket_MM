@@ -67,6 +67,13 @@ function compareMarketPriority(left: MarketCandidate, right: MarketCandidate): n
     return poolPriorityDifference;
   }
 
+  const leftInventoryUsd = Math.abs(left.inventoryUsd ?? 0);
+  const rightInventoryUsd = Math.abs(right.inventoryUsd ?? 0);
+
+  if (leftInventoryUsd !== rightInventoryUsd) {
+    return rightInventoryUsd - leftInventoryUsd;
+  }
+
   if (left.volume24hUsd !== right.volume24hUsd) {
     return right.volume24hUsd - left.volume24hUsd;
   }

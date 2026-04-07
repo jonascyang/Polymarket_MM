@@ -257,4 +257,81 @@ describe("selectActiveMarkets", () => {
       "Protect"
     ]);
   });
+
+  it("prioritizes non-zero inventory markets within the same pool so residual positions stay managed", () => {
+    const markets: MarketCandidate[] = [
+      {
+        id: 1518,
+        hoursToResolution: 120,
+        mid: 0.44,
+        spread: 0.01,
+        spreadThreshold: 0.06,
+        hasTwoSidedBook: true,
+        volume24hUsd: 60000,
+        isBoosted: false,
+        isVisible: true,
+        tradingStatus: "OPEN",
+        marketVariant: "DEFAULT",
+        isToxic: false,
+        marketPool: "core_sports",
+        whitelistTier: "active",
+        inventoryUsd: 0
+      },
+      {
+        id: 1469,
+        hoursToResolution: 120,
+        mid: 0.44,
+        spread: 0.01,
+        spreadThreshold: 0.06,
+        hasTwoSidedBook: true,
+        volume24hUsd: 50000,
+        isBoosted: false,
+        isVisible: true,
+        tradingStatus: "OPEN",
+        marketVariant: "DEFAULT",
+        isToxic: false,
+        marketPool: "core_sports",
+        whitelistTier: "active",
+        inventoryUsd: -5.94
+      },
+      {
+        id: 933,
+        hoursToResolution: 120,
+        mid: 0.44,
+        spread: 0.01,
+        spreadThreshold: 0.06,
+        hasTwoSidedBook: true,
+        volume24hUsd: 30000,
+        isBoosted: false,
+        isVisible: true,
+        tradingStatus: "OPEN",
+        marketVariant: "DEFAULT",
+        isToxic: false,
+        marketPool: "satellite_token",
+        whitelistTier: "active",
+        inventoryUsd: 0
+      },
+      {
+        id: 991,
+        hoursToResolution: 120,
+        mid: 0.44,
+        spread: 0.01,
+        spreadThreshold: 0.06,
+        hasTwoSidedBook: true,
+        volume24hUsd: 15000,
+        isBoosted: false,
+        isVisible: true,
+        tradingStatus: "OPEN",
+        marketVariant: "DEFAULT",
+        isToxic: false,
+        marketPool: "satellite_token",
+        whitelistTier: "active",
+        inventoryUsd: 1.89
+      }
+    ];
+
+    const result = selectActiveMarkets(markets);
+
+    expect(result.active.map((market) => market.id)).toEqual([1469, 1518, 991]);
+  });
 });
