@@ -27,19 +27,21 @@ export type MarketCandidate = {
 };
 
 const RUNTIME_MARKET_WHITELIST = new Map<number, RuntimeWhitelistEntry>([
-  [1469, { marketPool: "core_sports", whitelistTier: "active" }],
-  [1520, { marketPool: "core_sports", whitelistTier: "active" }],
-  [1533, { marketPool: "core_sports", whitelistTier: "active" }],
-  [1489, { marketPool: "core_sports", whitelistTier: "active" }],
-  [1519, { marketPool: "core_sports", whitelistTier: "watch" }],
-  [1532, { marketPool: "core_sports", whitelistTier: "watch" }],
-  [1585, { marketPool: "core_sports", whitelistTier: "watch" }],
-  [9331, { marketPool: "satellite_token", whitelistTier: "active" }],
-  [940, { marketPool: "satellite_token", whitelistTier: "active" }],
-  [9330, { marketPool: "satellite_token", whitelistTier: "active" }],
+  [1518, { marketPool: "core_sports", whitelistTier: "active" }],
+  [1471, { marketPool: "core_sports", whitelistTier: "active" }],
+  [1523, { marketPool: "core_sports", whitelistTier: "active" }],
+  [1582, { marketPool: "core_sports", whitelistTier: "active" }],
+  [1545, { marketPool: "core_sports", whitelistTier: "watch" }],
+  [1595, { marketPool: "core_sports", whitelistTier: "watch" }],
+  [1469, { marketPool: "core_sports", whitelistTier: "watch" }],
+  [1520, { marketPool: "core_sports", whitelistTier: "watch" }],
+  [933, { marketPool: "satellite_token", whitelistTier: "active" }],
+  [991, { marketPool: "satellite_token", whitelistTier: "active" }],
+  [993, { marketPool: "satellite_token", whitelistTier: "active" }],
   [9327, { marketPool: "satellite_token", whitelistTier: "active" }],
-  [993, { marketPool: "satellite_token", whitelistTier: "watch" }],
-  [947, { marketPool: "satellite_token", whitelistTier: "watch" }]
+  [992, { marketPool: "satellite_token", whitelistTier: "watch" }],
+  [900, { marketPool: "satellite_token", whitelistTier: "watch" }],
+  [940, { marketPool: "satellite_token", whitelistTier: "watch" }]
 ]);
 
 const APPROVED_MARKET_POOLS: ReadonlySet<MarketPool> = new Set([

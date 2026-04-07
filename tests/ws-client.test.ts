@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   buildSubscribeMessage,
+  isHeartbeatEvent,
   normalizeWalletEvent,
   PredictWsClient
 } from "../src/clients/ws-client";
@@ -142,5 +143,17 @@ describe("normalizeWalletEvent", () => {
         }
       }
     });
+  });
+});
+
+describe("isHeartbeatEvent", () => {
+  it("accepts the documented websocket heartbeat envelope", () => {
+    expect(
+      isHeartbeatEvent({
+        type: "M",
+        topic: "heartbeat",
+        data: 123
+      })
+    ).toBe(true);
   });
 });

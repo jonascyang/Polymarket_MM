@@ -79,10 +79,34 @@ function compareMarketPriority(left: MarketCandidate, right: MarketCandidate): n
 }
 
 export function selectActiveMarkets(markets: MarketCandidate[]): MarketSelectionResult {
-  const eligibleMarkets = [...markets].filter(isEligibleMarket).sort(compareMarketPriority).slice(0, 3);
+  const eligibleMarkets = [...markets].filter(isEligibleMarket).sort(compareMarketPriority);
+  const sportsMarkets = eligibleMarkets.filter((market) => market.marketPool === "core_sports");
+  const tokenMarkets = eligibleMarkets.filter((market) => market.marketPool === "satellite_token");
+
+  let selectedMarkets: MarketCandidate[];
+
+  if (sportsMarkets.length > 0 && tokenMarkets.length > 0) {
+    const guaranteedMarkets = [sportsMarkets[0], tokenMarkets[0]];
+    const selectedIds = new Set(guaranteedMarkets.map((market) => market.id));
+    const remainingMarkets = eligibleMarkets.filter((market) => !selectedIds.has(market.id));
+
+    selectedMarkets = [...guaranteedMarkets];
+
+    for (const market of remainingMarkets) {
+      if (selectedMarkets.length >= 3) {
+        break;
+      }
+
+      selectedMarkets.push(market);
+    }
+
+    selectedMarkets.sort(compareMarketPriority);
+  } else {
+    selectedMarkets = eligibleMarkets.slice(0, 3);
+  }
 
   return {
-    active: eligibleMarkets.map((market, index) => ({
+    active: selectedMarkets.map((market, index) => ({
       ...market,
       targetMode: index === 0 ? "Quote" : "Protect"
     }))

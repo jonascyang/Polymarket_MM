@@ -55,19 +55,19 @@ describe("isEligibleMarket", () => {
   });
 
   it("maps the current runtime whitelist ids into sports and token pools", () => {
-    expect(resolveRuntimeWhitelistEntry(1469)).toEqual({
+    expect(resolveRuntimeWhitelistEntry(1518)).toEqual({
       marketPool: "core_sports",
       whitelistTier: "active"
     });
-    expect(resolveRuntimeWhitelistEntry(1519)).toEqual({
+    expect(resolveRuntimeWhitelistEntry(1469)).toEqual({
       marketPool: "core_sports",
       whitelistTier: "watch"
     });
-    expect(resolveRuntimeWhitelistEntry(9331)).toEqual({
+    expect(resolveRuntimeWhitelistEntry(933)).toEqual({
       marketPool: "satellite_token",
       whitelistTier: "active"
     });
-    expect(resolveRuntimeWhitelistEntry(993)).toEqual({
+    expect(resolveRuntimeWhitelistEntry(992)).toEqual({
       marketPool: "satellite_token",
       whitelistTier: "watch"
     });

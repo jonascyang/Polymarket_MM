@@ -572,8 +572,8 @@ describe("runConfiguredRuntimeOnce", () => {
               success: true,
               data: [
                 {
-                  id: 1469,
-                  title: "Oklahoma City Thunder",
+                  id: 1518,
+                  title: "Spain",
                   question: "A?",
                   description: "",
                   tradingStatus: "OPEN",
@@ -582,8 +582,8 @@ describe("runConfiguredRuntimeOnce", () => {
                   isNegRisk: true,
                   isYieldBearing: true,
                   feeRateBps: 200,
-                  oracleQuestionId: "oq-1469",
-                  conditionId: "cond-1469",
+                  oracleQuestionId: "oq-1518",
+                  conditionId: "cond-1518",
                   resolverAddress: "0x0",
                   outcomes: [
                     { name: "Yes", indexSet: 1, onChainId: "123" },
@@ -593,7 +593,7 @@ describe("runConfiguredRuntimeOnce", () => {
                   shareThreshold: 1,
                   isBoosted: true,
                   polymarketConditionIds: [],
-                  categorySlug: "2026-nba-champion",
+                  categorySlug: "2026-fifa-world-cup-winner",
                   createdAt: "2026-04-02T00:00:00Z",
                   decimalPrecision: 3,
                   marketVariant: "DEFAULT",
@@ -952,8 +952,8 @@ describe("runConfiguredRuntimeOnce", () => {
                   }
                 },
                 {
-                  id: 9331,
-                  title: "$10B",
+                  id: 933,
+                  title: "Base token",
                   question: "C?",
                   description: "",
                   tradingStatus: "OPEN",
@@ -962,15 +962,15 @@ describe("runConfiguredRuntimeOnce", () => {
                   isNegRisk: false,
                   isYieldBearing: false,
                   feeRateBps: 0,
-                  oracleQuestionId: "oq-9331",
-                  conditionId: "cond-9331",
+                  oracleQuestionId: "oq-933",
+                  conditionId: "cond-933",
                   resolverAddress: "0x0",
                   outcomes: [],
                   spreadThreshold: 0.06,
                   shareThreshold: 1,
                   isBoosted: false,
                   polymarketConditionIds: [],
-                  categorySlug: "polymarket-fdv-one-day-after-launch",
+                  categorySlug: "will-base-launch-a-token-in-2026",
                   createdAt: "2026-04-02T00:00:00Z",
                   decimalPrecision: 3,
                   marketVariant: "DEFAULT",
@@ -1356,8 +1356,8 @@ describe("runConfiguredRuntimeOnce", () => {
                   }
                 },
                 {
-                  id: 1519,
-                  title: "England",
+                  id: 1520,
+                  title: "France",
                   question: "B?",
                   description: "",
                   tradingStatus: "OPEN",
@@ -1366,8 +1366,8 @@ describe("runConfiguredRuntimeOnce", () => {
                   isNegRisk: false,
                   isYieldBearing: false,
                   feeRateBps: 0,
-                  oracleQuestionId: "oq-1519",
-                  conditionId: "cond-1519",
+                  oracleQuestionId: "oq-1520",
+                  conditionId: "cond-1520",
                   resolverAddress: "0x0",
                   outcomes: [],
                   spreadThreshold: 0.06,
@@ -1386,8 +1386,8 @@ describe("runConfiguredRuntimeOnce", () => {
                   }
                 },
                 {
-                  id: 9331,
-                  title: "$10B",
+                  id: 933,
+                  title: "Base token",
                   question: "C?",
                   description: "",
                   tradingStatus: "OPEN",
@@ -1396,15 +1396,15 @@ describe("runConfiguredRuntimeOnce", () => {
                   isNegRisk: false,
                   isYieldBearing: false,
                   feeRateBps: 0,
-                  oracleQuestionId: "oq-9331",
-                  conditionId: "cond-9331",
+                  oracleQuestionId: "oq-933",
+                  conditionId: "cond-933",
                   resolverAddress: "0x0",
                   outcomes: [],
                   spreadThreshold: 0.06,
                   shareThreshold: 1,
                   isBoosted: false,
                   polymarketConditionIds: [],
-                  categorySlug: "polymarket-fdv-one-day-after-launch",
+                  categorySlug: "will-base-launch-a-token-in-2026",
                   createdAt: "2026-04-02T00:00:00Z",
                   decimalPrecision: 3,
                   marketVariant: "DEFAULT",
@@ -1498,9 +1498,9 @@ describe("runConfiguredRuntimeOnce", () => {
         whitelistTier: market.whitelistTier
       }))
     ).toEqual([
-      { id: 1469, marketPool: "core_sports", whitelistTier: "active" },
-      { id: 1519, marketPool: "core_sports", whitelistTier: "watch" },
-      { id: 9331, marketPool: "satellite_token", whitelistTier: "active" },
+      { id: 1469, marketPool: "core_sports", whitelistTier: "watch" },
+      { id: 1520, marketPool: "core_sports", whitelistTier: "watch" },
+      { id: 933, marketPool: "satellite_token", whitelistTier: "active" },
       { id: 122491, marketPool: "other", whitelistTier: undefined }
     ]);
   });

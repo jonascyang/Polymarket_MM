@@ -5,7 +5,7 @@ import { openAnalyticsStore } from "../src/storage/sqlite";
 
 const PRIMARY_MARKET_ID = 1469;
 const SECONDARY_MARKET_ID = 1520;
-const TERTIARY_MARKET_ID = 9331;
+const TERTIARY_MARKET_ID = 933;
 
 const config = {
   apiBaseUrl: "https://api.predict.fun/v1",
@@ -92,7 +92,7 @@ function buildPublicRestClient() {
           },
           {
             id: TERTIARY_MARKET_ID,
-            title: "$10B",
+            title: "Base token",
             question: "C?",
             description: "",
             tradingStatus: "OPEN",
@@ -101,8 +101,8 @@ function buildPublicRestClient() {
             isNegRisk: false,
             isYieldBearing: false,
             feeRateBps: 0,
-            oracleQuestionId: "oq-9331",
-            conditionId: "cond-9331",
+            oracleQuestionId: "oq-933",
+            conditionId: "cond-933",
             resolverAddress: "0x0",
             outcomes: [
               { name: "Yes", indexSet: 1, onChainId: "121" },
@@ -112,7 +112,7 @@ function buildPublicRestClient() {
             shareThreshold: 1,
             isBoosted: false,
             polymarketConditionIds: [],
-            categorySlug: "polymarket-fdv-one-day-after-launch",
+            categorySlug: "will-base-launch-a-token-in-2026",
             createdAt: "2026-04-02T00:00:00Z",
             decimalPrecision: 3,
             marketVariant: "DEFAULT",
@@ -198,9 +198,9 @@ describe("createRuntimeLoop", () => {
 
     expect(connectCount).toBe(1);
     expect(subscribed).toEqual([[
+      `predictOrderbook/${TERTIARY_MARKET_ID}`,
       `predictOrderbook/${PRIMARY_MARKET_ID}`,
-      `predictOrderbook/${SECONDARY_MARKET_ID}`,
-      `predictOrderbook/${TERTIARY_MARKET_ID}`
+      `predictOrderbook/${SECONDARY_MARKET_ID}`
     ]]);
     expect(snapshot.cycleCount).toBe(1);
   });
@@ -221,9 +221,9 @@ describe("createRuntimeLoop", () => {
     const snapshot = await loop.bootstrap();
 
     expect(snapshot.markets.map((market) => [market.id, market.currentState])).toEqual([
-      [PRIMARY_MARKET_ID, "Quote"],
+      [PRIMARY_MARKET_ID, "Protect"],
       [SECONDARY_MARKET_ID, "Protect"],
-      [TERTIARY_MARKET_ID, "Protect"]
+      [TERTIARY_MARKET_ID, "Quote"]
     ]);
   });
 
@@ -338,9 +338,9 @@ describe("createRuntimeLoop", () => {
 
     expect(subscribed).toEqual([
       [
+        `predictOrderbook/${TERTIARY_MARKET_ID}`,
         `predictOrderbook/${PRIMARY_MARKET_ID}`,
         `predictOrderbook/${SECONDARY_MARKET_ID}`,
-        `predictOrderbook/${TERTIARY_MARKET_ID}`,
         "predictWalletEvents/jwt-token"
       ]
     ]);
@@ -434,7 +434,7 @@ describe("createRuntimeLoop", () => {
     await loop.bootstrap();
     const before = loop.getSnapshot();
 
-    loop.handleServerMessage(JSON.stringify({ type: "heartbeat", data: 123 }));
+    loop.handleServerMessage(JSON.stringify({ type: "M", topic: "heartbeat", data: 123 }));
     loop.handleServerMessage(
       JSON.stringify({
         type: "M",
@@ -914,9 +914,9 @@ describe("createRuntimeLoop", () => {
     expect(portfolioSnapshot.net_inventory_usd).toBe(0);
     expect(JSON.parse(portfolioSnapshot.payload_json).aggregateNetInventoryUsd).toBe(0);
     expect(marketStates).toEqual([
-      { market_id: PRIMARY_MARKET_ID, state: "Quote" },
+      { market_id: TERTIARY_MARKET_ID, state: "Quote" },
+      { market_id: PRIMARY_MARKET_ID, state: "Protect" },
       { market_id: SECONDARY_MARKET_ID, state: "Protect" },
-      { market_id: TERTIARY_MARKET_ID, state: "Protect" }
     ]);
     expect(
       marketRegimes.map((row) => ({
@@ -928,24 +928,24 @@ describe("createRuntimeLoop", () => {
       }))
     ).toEqual([
       {
-        market_id: PRIMARY_MARKET_ID,
+        market_id: TERTIARY_MARKET_ID,
         current_state: "Quote",
         is_boosted: 0,
-        volume24h_usd: 18000,
+        volume24h_usd: 12000,
         marketHealth: "active-safe"
+      },
+      {
+        market_id: PRIMARY_MARKET_ID,
+        current_state: "Protect",
+        is_boosted: 0,
+        volume24h_usd: 18000,
+        marketHealth: "active-risky"
       },
       {
         market_id: SECONDARY_MARKET_ID,
         current_state: "Protect",
         is_boosted: 0,
         volume24h_usd: 15000,
-        marketHealth: "active-risky"
-      },
-      {
-        market_id: TERTIARY_MARKET_ID,
-        current_state: "Protect",
-        is_boosted: 0,
-        volume24h_usd: 12000,
         marketHealth: "active-risky"
       }
     ]);

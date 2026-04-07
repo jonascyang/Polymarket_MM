@@ -88,7 +88,7 @@ export function parseServerMessage(rawMessage: string): PredictWsServerMessage {
 }
 
 export function isHeartbeatEvent(message: PredictWsServerMessage): boolean {
-  return message.type === "heartbeat";
+  return message.topic === "heartbeat" || message.type === "heartbeat";
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
