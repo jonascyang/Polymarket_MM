@@ -115,6 +115,56 @@ Research and monitor outputs expose the current runtime health classification:
 
 `npm run monitor` now prints health, per-side quote sizes, and replay totals using the same `quote` / `protect` language as the runtime.
 
+## Server operation
+
+The recommended server setup is:
+
+- keep `npm run shadow` running continuously under `systemd`
+- run `npm run batch -- --first=100 --report-json` on an hourly timer
+- use `npm run monitor -- --once` manually against the same SQLite database when you want a point-in-time terminal view
+
+Deployment assets live in:
+
+- `ops/systemd/predictfun-mm-shadow.service`
+- `ops/systemd/predictfun-mm-batch.service`
+- `ops/systemd/predictfun-mm-batch.timer`
+
+Create `/etc/predictfun-mm/predictfun-mm.env` with at least:
+
+```bash
+PREDICT_MM_WORKDIR=/opt/predictfun-mm
+PREDICT_API_BASE_URL=https://api.predict.fun/v1
+PREDICT_WS_URL=wss://ws.predict.fun/ws
+PREDICT_API_KEY=...
+PREDICT_MM_DB_PATH=/var/lib/predictfun-mm/predict-mm.sqlite
+PREDICT_RUNTIME_INTERVAL_MS=5000
+```
+
+Optional environment values like `PREDICT_AUTH_BEARER_TOKEN`, archive settings, and R2 credentials can live in the same file.
+
+Install and enable the services:
+
+```bash
+sudo mkdir -p /etc/predictfun-mm
+cd /opt/predictfun-mm
+npm install
+sudo cp ops/systemd/predictfun-mm-shadow.service /etc/systemd/system/
+sudo cp ops/systemd/predictfun-mm-batch.service /etc/systemd/system/
+sudo cp ops/systemd/predictfun-mm-batch.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now predictfun-mm-shadow.service
+sudo systemctl enable --now predictfun-mm-batch.timer
+```
+
+Inspect them with:
+
+```bash
+sudo systemctl status predictfun-mm-shadow.service
+sudo systemctl status predictfun-mm-batch.timer
+sudo journalctl -u predictfun-mm-shadow.service -f
+sudo journalctl -u predictfun-mm-batch.service -n 100
+```
+
 ## Notes
 
 - `collect`, `report`, and `archive` are not wired into the default `paper` / `shadow` / `live` loops. They are focused operational utilities.

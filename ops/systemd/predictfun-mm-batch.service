@@ -1,0 +1,11 @@
+[Unit]
+Description=Predict.fun MM research batch run
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/predictfun-mm/predictfun-mm.env
+ExecStart=/usr/bin/env bash -lc 'cd "$PREDICT_MM_WORKDIR" && npm run batch -- --first=100 --report-json'
+StandardOutput=journal
+StandardError=journal

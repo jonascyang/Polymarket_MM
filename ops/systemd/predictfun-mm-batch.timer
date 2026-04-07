@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Predict.fun MM research batch hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=300
+Unit=predictfun-mm-batch.service
+
+[Install]
+WantedBy=timers.target
