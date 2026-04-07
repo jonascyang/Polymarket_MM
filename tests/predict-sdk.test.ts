@@ -82,6 +82,7 @@ describe("buildLimitCreateOrderBody", () => {
     expect(body.data.pricePerShare).toBe("630000000000000000");
     expect(body.data.order.side).toBe(0);
     expect(body.data.order.tokenId).toBe("456");
+    expect(Number(body.data.order.makerAmount) / 1e18).toBeCloseTo(6, 3);
   });
 
   it("preserves exact bid price precision for three-decimal quotes", async () => {

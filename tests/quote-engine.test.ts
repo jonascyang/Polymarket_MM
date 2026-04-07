@@ -58,4 +58,19 @@ describe("buildQuotes", () => {
     expect(quotes.bidSizeUsd).toBeGreaterThan(0);
     expect(quotes.askSizeUsd).toBe(0);
   });
+
+  it("skips quoting when the remaining quote budget is below the platform minimum order value", () => {
+    const quotes = buildQuotes({
+      mode: "Quote",
+      fairValue: 0.5,
+      inventoryUsd: 0,
+      maxInventoryUsd: 15,
+      tickSize: 0.001,
+      quoteBudgetUsd: 0.5
+    });
+
+    expect(quotes.sizeUsd).toBe(0);
+    expect(quotes.bidSizeUsd).toBe(0);
+    expect(quotes.askSizeUsd).toBe(0);
+  });
 });

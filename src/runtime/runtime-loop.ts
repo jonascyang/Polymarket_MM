@@ -17,7 +17,11 @@ import {
   type RunConfiguredRuntimeOptions,
   type RuntimeCycleResult
 } from "./runtime";
-import type { PredictLiveExecutor } from "../execution/live-executor";
+import {
+  PredictLiveSyncError,
+  type PredictLiveCreatedOrder,
+  type PredictLiveExecutor
+} from "../execution/live-executor";
 import type { ManagedOrder, OrderCommand } from "../execution/order-manager";
 
 export type RuntimeLoopSnapshot = {
@@ -661,7 +665,7 @@ function syncSimulatedShadowOrders(
 function syncLiveOrders(
   state: BootstrappedRuntimeState,
   commands: OrderCommand[],
-  createdOrderIds: string[],
+  createdOrdersInput: PredictLiveCreatedOrder[],
   nowMs: number
 ): void {
   const cancelOrderIds = commands
@@ -679,17 +683,21 @@ function syncLiveOrders(
     (command): command is Extract<OrderCommand, { type: "create" }> =>
       command.type === "create"
   );
-
-  if (createCommands.length !== createdOrderIds.length) {
-    throw new Error(
-      `Live execution returned ${createdOrderIds.length} created orders for ${createCommands.length} create commands`
-    );
-  }
-
-  const createdOrders = createCommands.map((command, index) => ({
-    ...command.order,
-    id: createdOrderIds[index]
-  }));
+  const createdCommandKeys = new Set(
+    createCommands.map((command) =>
+      `${command.order.marketId}:${command.order.side}:${command.order.price}:${command.order.sizeUsd}`
+    )
+  );
+  const createdOrders = createdOrdersInput
+    .filter((order) =>
+      createdCommandKeys.has(
+        `${order.order.marketId}:${order.order.side}:${order.order.price}:${order.order.sizeUsd}`
+      )
+    )
+    .map((order) => ({
+      ...order.order,
+      id: order.orderId
+    }));
 
   for (const order of cancelledOrders) {
     state.services.recorder.recordManagedOrder(order, "LIVE_CANCELLED");
@@ -745,17 +753,21 @@ async function syncExecutionState(
     return;
   }
 
-  const execution = await liveExecutor.syncCommands(
-    commands,
-    buildLiveMarketMetadataMap(state.markets)
-  );
+  try {
+    const execution = await liveExecutor.syncCommands(
+      commands,
+      buildLiveMarketMetadataMap(state.markets)
+    );
 
-  syncLiveOrders(
-    state,
-    commands,
-    execution.created.map((order) => order.orderId),
-    nowMs
-  );
+    syncLiveOrders(state, commands, execution.created, nowMs);
+  } catch (error) {
+    if (error instanceof PredictLiveSyncError) {
+      syncLiveOrders(state, commands, error.created, nowMs);
+      throw error.cause;
+    }
+
+    throw error;
+  }
 }
 
 async function refreshPublicLastSales(

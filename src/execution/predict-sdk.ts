@@ -59,9 +59,13 @@ function decimalToWei(value: number, decimals = WEI_PRECISION): bigint {
   return decimalStringToWei(normalizeDecimalString(value), decimals);
 }
 
+function getExecutionPrice(order: ManagedOrder): number {
+  return order.side === "bid" ? order.price : getComplementaryPrice(order.price);
+}
+
 function getQuantityWei(order: ManagedOrder): bigint {
   const sizeUsdWei = decimalToWei(order.sizeUsd);
-  const pricePerShareWei = decimalToWei(order.price);
+  const pricePerShareWei = decimalToWei(getExecutionPrice(order));
 
   return (sizeUsdWei * WEI_SCALE) / pricePerShareWei;
 }

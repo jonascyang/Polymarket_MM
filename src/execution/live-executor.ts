@@ -20,6 +20,10 @@ export type PredictLiveExecutorConfig = {
   orderBuilder: OrderBuilder;
 };
 
+export type PredictLiveCreatedOrder = PredictCreateOrderResponse & {
+  order: Extract<OrderCommand, { type: "create" }>["order"];
+};
+
 export type PredictLiveExecutorFactoryInput = {
   bearerToken: string;
   restClient: LiveRestClient;
@@ -27,6 +31,24 @@ export type PredictLiveExecutorFactoryInput = {
   predictAccount?: string;
   chainId?: ChainId;
 };
+
+export class PredictLiveSyncError extends Error {
+  readonly cancelled: PredictRemoveOrdersResponse;
+  readonly created: PredictLiveCreatedOrder[];
+  override readonly cause: unknown;
+
+  constructor(input: {
+    cancelled: PredictRemoveOrdersResponse;
+    created: PredictLiveCreatedOrder[];
+    cause: unknown;
+  }) {
+    super("Predict live sync failed after a partial create");
+    this.name = "PredictLiveSyncError";
+    this.cancelled = input.cancelled;
+    this.created = input.created;
+    this.cause = input.cause;
+  }
+}
 
 export class PredictLiveExecutor {
   constructor(private readonly config: PredictLiveExecutorConfig) {}
@@ -86,14 +108,14 @@ export class PredictLiveExecutor {
     marketsById: Record<number, PredictSdkMarketMetadata>
   ): Promise<{
     cancelled: PredictRemoveOrdersResponse;
-    created: PredictCreateOrderResponse[];
+    created: PredictLiveCreatedOrder[];
   }> {
     const cancelled = await this.removeOrders(
       commands
         .filter((command): command is Extract<OrderCommand, { type: "cancel" }> => command.type === "cancel")
         .map((command) => command.orderId)
     );
-    const created: PredictCreateOrderResponse[] = [];
+    const created: PredictLiveCreatedOrder[] = [];
 
     for (const command of commands) {
       if (command.type !== "create") {
@@ -108,7 +130,18 @@ export class PredictLiveExecutor {
         );
       }
 
-      created.push(await this.createLimitOrder(command.order, market));
+      try {
+        created.push({
+          ...(await this.createLimitOrder(command.order, market)),
+          order: command.order
+        });
+      } catch (error) {
+        throw new PredictLiveSyncError({
+          cancelled,
+          created,
+          cause: error
+        });
+      }
     }
 
     return {

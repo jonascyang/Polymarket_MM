@@ -27,6 +27,8 @@ export type QuotePlan = {
   canQuote: boolean;
 };
 
+const MIN_PLATFORM_ORDER_VALUE_USD = 0.9;
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
@@ -68,12 +70,15 @@ function getQuoteSizeUsd(input: BuildQuotesInput): number {
   const defaultSize = input.mode === "Quote"
     ? (input.scoreQuoteSizeUsd ?? 6)
     : (input.defendQuoteSizeUsd ?? 4);
+  const baseSize = input.quoteBudgetUsd === undefined
+    ? defaultSize
+    : Math.min(defaultSize, input.quoteBudgetUsd);
 
-  if (input.quoteBudgetUsd === undefined) {
-    return defaultSize;
+  if (baseSize < MIN_PLATFORM_ORDER_VALUE_USD) {
+    return 0;
   }
 
-  return Math.min(defaultSize, input.quoteBudgetUsd);
+  return baseSize;
 }
 
 function getQuoteSideAvailability(input: BuildQuotesInput): {

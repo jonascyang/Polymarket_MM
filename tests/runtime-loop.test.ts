@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { PredictLiveSyncError } from "../src/execution/live-executor";
 import { createRuntimeLoop, startPollingRuntime } from "../src/runtime/runtime-loop";
 import { openAnalyticsStore } from "../src/storage/sqlite";
 
@@ -373,10 +374,11 @@ describe("createRuntimeLoop", () => {
             },
             created: commands
               .filter((command) => command.type === "create")
-              .map((_, index) => ({
+              .map((command, index) => ({
                 code: "CREATED",
                 orderId: `order-${syncCommandsCalls.length}-${index + 1}`,
-                orderHash: `hash-${syncCommandsCalls.length}-${index + 1}`
+                orderHash: `hash-${syncCommandsCalls.length}-${index + 1}`,
+                order: command.order
               }))
           };
         }
@@ -551,11 +553,14 @@ describe("createRuntimeLoop", () => {
               removed: [],
               noop: []
             },
-            created: Array.from({ length: createCount }, (_, index) => ({
-              code: "CREATED",
-              orderId: `live-order-${index + 1}`,
-              orderHash: `0xhash-${index + 1}`
-            }))
+            created: commands
+              .filter((command) => command.type === "create")
+              .map((command, index) => ({
+                code: "CREATED",
+                orderId: `live-order-${index + 1}`,
+                orderHash: `0xhash-${index + 1}`,
+                order: command.order
+              }))
           };
         }
       },
@@ -574,6 +579,82 @@ describe("createRuntimeLoop", () => {
     expect(executedCommands).toHaveLength(2);
     expect(bootstrapped.result.commands).toHaveLength(0);
     expect(afterManualCycle.result.commands).toHaveLength(0);
+  });
+
+  it("keeps partially created live orders in local state when a later create fails", async () => {
+    let syncCallCount = 0;
+    const loop = await createRuntimeLoop("live", config, {
+      database: openAnalyticsStore(":memory:"),
+      restClient: buildPublicRestClient(),
+      liveExecutor: {
+        async syncCommands(commands) {
+          syncCallCount += 1;
+
+          if (syncCallCount === 1) {
+            const firstCreate = commands.find(
+              (command): command is Extract<(typeof commands)[number], { type: "create" }> =>
+                command.type === "create"
+            );
+
+            if (!firstCreate) {
+              return {
+                cancelled: {
+                  success: true,
+                  removed: [],
+                  noop: []
+                },
+                created: []
+              };
+            }
+
+            throw new PredictLiveSyncError({
+              cancelled: {
+                success: true,
+                removed: [],
+                noop: []
+              },
+              created: [
+                {
+                  code: "CREATED",
+                  orderId: "partial-live-order-1",
+                  orderHash: "0xpartial-1",
+                  order: firstCreate.order
+                }
+              ],
+              cause: new Error("second create failed")
+            });
+          }
+
+          return {
+            cancelled: {
+              success: true,
+              removed: [],
+              noop: []
+            },
+            created: []
+          };
+        }
+      },
+      wsClient: {
+        connect() {
+          return {} as WebSocket;
+        },
+        subscribe() {},
+        respondToHeartbeat() {}
+      }
+    });
+
+    await expect(loop.bootstrap()).rejects.toThrow("second create failed");
+
+    const snapshot = loop.getSnapshot();
+    expect(
+      snapshot.result.commands.some(
+        (command) =>
+          command.type === "create" &&
+          command.order.marketId === PRIMARY_MARKET_ID &&
+          command.order.side === "bid"
+      )
+    ).toBe(false);
   });
 
   it("updates local live state from private wallet fill events and records fills", async () => {
