@@ -5,6 +5,8 @@ import {
   REQUIRED_TABLE_COLUMNS
 } from "./schema";
 
+const SQLITE_BUSY_TIMEOUT_MS = 15_000;
+
 function getExistingColumns(database: DatabaseSync, tableName: string): Set<string> {
   const columns = database
     .prepare(`PRAGMA table_info(${tableName})`)
@@ -31,6 +33,9 @@ function ensureRequiredColumns(database: DatabaseSync): void {
 
 export function openAnalyticsStore(dbPath: string): DatabaseSync {
   const database = new DatabaseSync(dbPath);
+
+  database.exec(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
+  database.exec("PRAGMA journal_mode = WAL");
 
   for (const statement of CREATE_TABLE_STATEMENTS) {
     database.exec(statement);

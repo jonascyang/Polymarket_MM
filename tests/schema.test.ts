@@ -143,4 +143,23 @@ describe("storage schema", () => {
     migrated.close();
     rmSync(directory, { recursive: true, force: true });
   }, 15_000);
+
+  it("configures file-backed analytics stores for WAL and busy timeout", () => {
+    const directory = mkdtempSync(join(tmpdir(), "predict-mm-pragmas-"));
+    const dbPath = join(directory, "analytics.sqlite");
+    const database = openAnalyticsStore(dbPath);
+
+    const [{ journal_mode }] = database
+      .prepare("PRAGMA journal_mode")
+      .all() as Array<{ journal_mode: string }>;
+    const [{ timeout }] = database
+      .prepare("PRAGMA busy_timeout")
+      .all() as Array<{ timeout: number }>;
+
+    expect(journal_mode.toLowerCase()).toBe("wal");
+    expect(timeout).toBeGreaterThan(0);
+
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
 });
