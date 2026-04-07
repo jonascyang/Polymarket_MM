@@ -11,21 +11,30 @@ export type DiffOrdersResult = {
   keep: ManagedOrder[];
 };
 
-function buildOrderKey(order: ManagedOrder): string {
-  return `${order.marketId}:${order.side}:${order.price}:${order.sizeUsd}`;
+const SIZE_USD_MATCH_TOLERANCE = 0.001;
+
+function ordersMatch(currentOrder: ManagedOrder, targetOrder: ManagedOrder): boolean {
+  return (
+    currentOrder.marketId === targetOrder.marketId &&
+    currentOrder.side === targetOrder.side &&
+    currentOrder.price === targetOrder.price &&
+    Math.abs(currentOrder.sizeUsd - targetOrder.sizeUsd) <= SIZE_USD_MATCH_TOLERANCE
+  );
 }
 
 export function diffOrders(input: DiffOrdersInput): DiffOrdersResult {
-  const targetByKey = new Map(input.target.map((order) => [buildOrderKey(order), order]));
   const keep: ManagedOrder[] = [];
   const cancel: ManagedOrder[] = [];
+  const unmatchedTargets = [...input.target];
 
   for (const currentOrder of input.current) {
-    const key = buildOrderKey(currentOrder);
+    const matchingTargetIndex = unmatchedTargets.findIndex((targetOrder) =>
+      ordersMatch(currentOrder, targetOrder)
+    );
 
-    if (targetByKey.has(key)) {
+    if (matchingTargetIndex >= 0) {
       keep.push(currentOrder);
-      targetByKey.delete(key);
+      unmatchedTargets.splice(matchingTargetIndex, 1);
       continue;
     }
 
@@ -34,7 +43,7 @@ export function diffOrders(input: DiffOrdersInput): DiffOrdersResult {
 
   return {
     cancel,
-    create: [...targetByKey.values()],
+    create: unmatchedTargets,
     keep
   };
 }

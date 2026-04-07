@@ -13,6 +13,43 @@ describe("diffOrders", () => {
 
     expect(result.cancel.map((order) => order.id)).toEqual(["1"]);
   });
+
+  it("keeps live orders when sizeUsd only differs by tiny normalization drift", () => {
+    const result = diffOrders({
+      current: [{ id: "1", side: "bid", marketId: 1518, price: 0.155, sizeUsd: 5.999895 }],
+      target: [{ side: "bid", marketId: 1518, price: 0.155, sizeUsd: 6 }]
+    });
+
+    expect(result.keep).toEqual([
+      {
+        id: "1",
+        side: "bid",
+        marketId: 1518,
+        price: 0.155,
+        sizeUsd: 5.999895
+      }
+    ]);
+    expect(result.cancel).toEqual([]);
+    expect(result.create).toEqual([]);
+  });
+
+  it("still recreates orders when the target size changed materially", () => {
+    const result = diffOrders({
+      current: [{ id: "1", side: "bid", marketId: 1518, price: 0.155, sizeUsd: 5.95 }],
+      target: [{ side: "bid", marketId: 1518, price: 0.155, sizeUsd: 6 }]
+    });
+
+    expect(result.keep).toEqual([]);
+    expect(result.cancel.map((order) => order.id)).toEqual(["1"]);
+    expect(result.create).toEqual([
+      {
+        side: "bid",
+        marketId: 1518,
+        price: 0.155,
+        sizeUsd: 6
+      }
+    ]);
+  });
 });
 
 describe("buildEmergencyFlattenOrders", () => {
