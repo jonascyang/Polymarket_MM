@@ -1,0 +1,18 @@
+[Unit]
+Description=Predict.fun MM live runtime
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/predictfun-mm/predictfun-mm.env
+ExecStart=/usr/bin/env bash -lc 'cd "$PREDICT_MM_WORKDIR" && npm run live'
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGINT
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

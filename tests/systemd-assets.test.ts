@@ -36,6 +36,18 @@ describe("server deployment assets", () => {
     expect(timer).toContain("Persistent=true");
   });
 
+  test("includes a systemd live service for persistent signed execution", () => {
+    const service = readWorkspaceFile("ops/systemd/predictfun-mm-live.service");
+
+    expect(service).toContain("Description=Predict.fun MM live runtime");
+    expect(service).toContain("EnvironmentFile=/etc/predictfun-mm/predictfun-mm.env");
+    expect(service).toContain(
+      "ExecStart=/usr/bin/env bash -lc 'cd \"$PREDICT_MM_WORKDIR\" && npm run live'"
+    );
+    expect(service).toContain("Restart=always");
+    expect(service).toContain("KillSignal=SIGINT");
+  });
+
   test("documents the server soak workflow in the README", () => {
     const readme = readWorkspaceFile("README.md");
 
