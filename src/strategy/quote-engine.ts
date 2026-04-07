@@ -36,6 +36,7 @@ export type QuotePlan = {
 
 const MIN_PLATFORM_ORDER_VALUE_USD = 0.9;
 const TOP_OF_BOOK_QUEUE_MULTIPLIER = 25;
+const DEFAULT_VISIBLE_QUEUE_SHARE_CAP = 0.1;
 const PRICE_EPSILON = 1e-9;
 
 function clamp(value: number, min: number, max: number): number {
@@ -74,13 +75,18 @@ function hasAggregateQuoteCapacity(input: BuildQuotesInput): boolean {
   return Math.abs(input.aggregateNetInventoryUsd) < input.aggregateNetInventoryCapUsd;
 }
 
-function getQuoteSizeUsd(input: BuildQuotesInput): number {
+function getQuoteSizeUsd(
+  input: BuildQuotesInput,
+  visibleQueueBudgetUsd?: number
+): number {
   const defaultSize = input.mode === "Quote"
     ? (input.scoreQuoteSizeUsd ?? 6)
     : (input.defendQuoteSizeUsd ?? 4);
-  const baseSize = input.quoteBudgetUsd === undefined
-    ? defaultSize
-    : Math.min(defaultSize, input.quoteBudgetUsd);
+  const baseSize = Math.min(
+    defaultSize,
+    input.quoteBudgetUsd ?? Number.POSITIVE_INFINITY,
+    visibleQueueBudgetUsd ?? Number.POSITIVE_INFINITY
+  );
 
   if (baseSize < MIN_PLATFORM_ORDER_VALUE_USD) {
     return 0;
@@ -158,6 +164,17 @@ function normalizeBookSide(
   return [{ price: bestPrice, size: 0 }];
 }
 
+function getVisibleQueueBudgetUsd(
+  level: QuoteBookLevel | undefined,
+  shareCap: number
+): number | undefined {
+  if (!level || level.size <= 0) {
+    return undefined;
+  }
+
+  return level.price * level.size * shareCap;
+}
+
 function shouldPreferSecondLevel(
   firstLevel: QuoteBookLevel,
   secondLevel: QuoteBookLevel | undefined,
@@ -186,15 +203,15 @@ function validAskCandidates(levels: QuoteBookLevel[], askFloor: number): QuoteBo
     .sort((left, right) => left.price - right.price);
 }
 
-function selectBidPrice(
+function selectBidQuote(
   levels: QuoteBookLevel[],
   bidCap: number,
   fallbackBid: number,
   bidSizeUsd: number,
   tickSize: number
-): number | null {
+): { price: number; level?: QuoteBookLevel } | null {
   if (levels.length === 0) {
-    return fallbackBid;
+    return { price: fallbackBid };
   }
 
   const valid = validBidCandidates(levels, bidCap);
@@ -204,21 +221,21 @@ function selectBidPrice(
   }
 
   if (shouldPreferSecondLevel(valid[0], valid[1], bidSizeUsd, tickSize)) {
-    return valid[1]!.price;
+    return { price: valid[1]!.price, level: valid[1]! };
   }
 
-  return valid[0]!.price;
+  return { price: valid[0]!.price, level: valid[0]! };
 }
 
-function selectAskPrice(
+function selectAskQuote(
   levels: QuoteBookLevel[],
   askFloor: number,
   fallbackAsk: number,
   askSizeUsd: number,
   tickSize: number
-): number | null {
+): { price: number; level?: QuoteBookLevel } | null {
   if (levels.length === 0) {
-    return fallbackAsk;
+    return { price: fallbackAsk };
   }
 
   const valid = validAskCandidates(levels, askFloor);
@@ -228,10 +245,10 @@ function selectAskPrice(
   }
 
   if (shouldPreferSecondLevel(valid[0], valid[1], askSizeUsd, tickSize)) {
-    return valid[1]!.price;
+    return { price: valid[1]!.price, level: valid[1]! };
   }
 
-  return valid[0]!.price;
+  return { price: valid[0]!.price, level: valid[0]! };
 }
 
 function isClosePrice(left: number, right: number): boolean {
@@ -301,9 +318,9 @@ export function buildQuotes(input: BuildQuotesInput): QuotePlan {
     input.mode !== "Stop" &&
     (bidEnabled || askEnabled) &&
     hasAggregateQuoteCapacity(input);
-  const sizeUsd = canQuote ? getQuoteSizeUsd(input) : 0;
-  const provisionalBidSizeUsd = canQuote && bidEnabled ? sizeUsd : 0;
-  const provisionalAskSizeUsd = canQuote && askEnabled ? sizeUsd : 0;
+  const defaultQuoteSizeUsd = canQuote ? getQuoteSizeUsd(input) : 0;
+  const provisionalBidSizeUsd = canQuote && bidEnabled ? defaultQuoteSizeUsd : 0;
+  const provisionalAskSizeUsd = canQuote && askEnabled ? defaultQuoteSizeUsd : 0;
   const fallbackBid = clamp(
     floorToTick(reservationPrice - baseHalfSpread, input.tickSize),
     0,
@@ -314,32 +331,46 @@ export function buildQuotes(input: BuildQuotesInput): QuotePlan {
     0,
     1
   );
-  const bid = selectBidPrice(
+  const selectedBid = selectBidQuote(
     normalizeBookSide(input.bidBook, input.bestBid),
     fallbackBid,
     fallbackBid,
     provisionalBidSizeUsd,
     input.tickSize
   );
-  const ask = selectAskPrice(
+  const selectedAsk = selectAskQuote(
     normalizeBookSide(input.askBook, input.bestAsk),
     fallbackAsk,
     fallbackAsk,
     provisionalAskSizeUsd,
     input.tickSize
   );
-  const bidSizeUsd = bid !== null ? provisionalBidSizeUsd : 0;
-  const askSizeUsd = ask !== null ? provisionalAskSizeUsd : 0;
+  const bidVisibleQueueBudgetUsd = getVisibleQueueBudgetUsd(
+    selectedBid?.level,
+    DEFAULT_VISIBLE_QUEUE_SHARE_CAP
+  );
+  const askVisibleQueueBudgetUsd = getVisibleQueueBudgetUsd(
+    selectedAsk?.level,
+    DEFAULT_VISIBLE_QUEUE_SHARE_CAP
+  );
+  const bidSizeUsd =
+    canQuote && selectedBid !== null && bidEnabled
+      ? getQuoteSizeUsd(input, bidVisibleQueueBudgetUsd)
+      : 0;
+  const askSizeUsd =
+    canQuote && selectedAsk !== null && askEnabled
+      ? getQuoteSizeUsd(input, askVisibleQueueBudgetUsd)
+      : 0;
 
   return {
     mode: input.mode,
-    bid: bid ?? fallbackBid,
-    ask: ask ?? fallbackAsk,
+    bid: selectedBid?.price ?? fallbackBid,
+    ask: selectedAsk?.price ?? fallbackAsk,
     bidSizeUsd,
     askSizeUsd,
     reservationPrice,
     baseHalfSpread,
-    sizeUsd,
+    sizeUsd: canQuote ? Math.max(bidSizeUsd, askSizeUsd) : 0,
     canQuote
   };
 }

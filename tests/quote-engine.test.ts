@@ -66,6 +66,57 @@ describe("buildQuotes", () => {
     expect(quotes.ask).toBe(0.502);
   });
 
+  it("caps quote size to a visible-queue derived budget on the selected bid price", () => {
+    const visibleQueueUsd = 50 * 0.397;
+    const queueShareCap = 0.1;
+    const expectedSizeUsd = visibleQueueUsd * queueShareCap;
+
+    const quotes = buildQuotes({
+      mode: "Protect",
+      fairValue: 0.3985,
+      inventoryUsd: -8,
+      maxInventoryUsd: 15,
+      tickSize: 0.001,
+      bidBook: [
+        { price: 0.399, size: 129.63 },
+        { price: 0.397, size: 50 }
+      ],
+      askBook: [
+        { price: 0.4, size: 5325.7938 },
+        { price: 0.401, size: 110.016 }
+      ]
+    });
+
+    expect(quotes.bid).toBe(0.397);
+    expect(quotes.bidSizeUsd).toBeCloseTo(expectedSizeUsd, 6);
+    expect(quotes.sizeUsd).toBeCloseTo(expectedSizeUsd, 6);
+  });
+
+  it("caps protect size to a visible-queue derived budget on the selected ask price", () => {
+    const visibleQueueUsd = 30 * 0.879;
+    const queueShareCap = 0.1;
+    const expectedSizeUsd = visibleQueueUsd * queueShareCap;
+
+    const quotes = buildQuotes({
+      mode: "Protect",
+      fairValue: 0.8775,
+      inventoryUsd: 8,
+      maxInventoryUsd: 15,
+      tickSize: 0.001,
+      bestBid: 0.861,
+      bestAsk: 0.878,
+      askBook: [
+        { price: 0.878, size: 1423.505 },
+        { price: 0.879, size: 30 }
+      ]
+    });
+
+    expect(quotes.ask).toBe(0.879);
+    expect(quotes.bidSizeUsd).toBe(0);
+    expect(quotes.askSizeUsd).toBeCloseTo(expectedSizeUsd, 6);
+    expect(quotes.sizeUsd).toBeCloseTo(expectedSizeUsd, 6);
+  });
+
   it("moves the ask closer and the bid farther when inventory is long", () => {
     const quotes = buildQuotes({
       mode: "Protect",

@@ -453,12 +453,12 @@ describe("runRuntimeCycle", () => {
           touchMoveRatePerMinute: 1,
           lastQuoteUpdateAtMs: 10_000,
           bidBook: [
-            { price: 0.499, size: 40 },
-            { price: 0.498, size: 8 }
+            { price: 0.499, size: 99 },
+            { price: 0.498, size: 20 }
           ],
           askBook: [
-            { price: 0.501, size: 40 },
-            { price: 0.502, size: 8 }
+            { price: 0.501, size: 99 },
+            { price: 0.502, size: 20 }
           ],
           bestBid: 0.499,
           bestAsk: 0.501
