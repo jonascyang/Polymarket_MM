@@ -182,6 +182,17 @@ describe("renderMonitorWebHtml", () => {
     expect(html).toContain("Auto-refresh: 250ms");
     expect(html).toContain("setInterval(() => void refreshSnapshot(), 250)");
   });
+
+  it("uses a minimal terminal layout without cards and with overflow-safe tables", () => {
+    const html = renderMonitorWebHtml();
+
+    expect(html).not.toContain("summary-card");
+    expect(html).not.toContain("box-shadow");
+    expect(html).not.toContain("border-radius");
+    expect(html).toContain("table-layout: fixed");
+    expect(html).toContain("text-overflow: ellipsis");
+    expect(html).toContain("overflow-wrap: anywhere");
+  });
 });
 
 describe("parseMonitorWebCliOptions", () => {

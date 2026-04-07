@@ -26,147 +26,213 @@ export function renderMonitorWebHtml(options: { title?: string } = {}): string {
     <title>${escapeHtml(title)}</title>
     <style>
       :root {
-        --bg: #f4f2ec;
-        --panel: #fffdf8;
-        --border: #dad2c4;
-        --text: #1e1f1b;
-        --muted: #6d705f;
-        --green: #197b47;
-        --red: #af2c2c;
-        --amber: #8a5b00;
-        --shadow: rgba(38, 33, 24, 0.08);
+        --bg: #06080b;
+        --surface: #0b0f14;
+        --line: #18202c;
+        --line-strong: #273142;
+        --text: #d4dbe5;
+        --muted: #7f8b9d;
+        --accent: #8dd6ff;
+        --green: #28c76f;
+        --red: #ff5c5c;
+        --amber: #f2b84b;
       }
-      * { box-sizing: border-box; }
+      * { box-sizing: border-box; min-width: 0; }
+      html { height: 100%; }
       body {
         margin: 0;
-        font-family: "SF Mono", "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-        background: linear-gradient(180deg, #f7f4ed 0%, var(--bg) 100%);
+        min-height: 100%;
+        font-family: "IBM Plex Mono", "SF Mono", "JetBrains Mono", ui-monospace, monospace;
+        background: var(--bg);
         color: var(--text);
       }
       main {
-        max-width: 1360px;
+        max-width: 1480px;
         margin: 0 auto;
-        padding: 24px;
+        padding: 16px 18px 24px;
       }
       .topbar {
         display: flex;
         justify-content: space-between;
+        align-items: flex-end;
         gap: 16px;
-        align-items: flex-start;
-        margin-bottom: 18px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--line-strong);
       }
       .title h1 {
         margin: 0;
-        font-size: 28px;
-        letter-spacing: -0.03em;
+        font-size: 15px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--accent);
       }
       .title p {
-        margin: 8px 0 0;
+        margin: 4px 0 0;
         color: var(--muted);
-        font-size: 13px;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
       }
       .controls {
         display: flex;
         align-items: center;
         gap: 12px;
-      }
-      button {
-        border: 1px solid var(--border);
-        background: var(--panel);
-        color: var(--text);
-        border-radius: 999px;
-        padding: 10px 16px;
-        cursor: pointer;
-        box-shadow: 0 8px 24px var(--shadow);
-      }
-      .error {
-        display: none;
-        margin-bottom: 16px;
-        padding: 12px 14px;
-        border: 1px solid rgba(175, 44, 44, 0.25);
-        background: rgba(175, 44, 44, 0.08);
-        color: var(--red);
-        border-radius: 12px;
-      }
-      .summary-grid {
-        display: grid;
-        grid-template-columns: repeat(6, minmax(0, 1fr));
-        gap: 12px;
-        margin-bottom: 18px;
-      }
-      .summary-card, .panel {
-        border: 1px solid var(--border);
-        background: var(--panel);
-        border-radius: 16px;
-        box-shadow: 0 10px 30px var(--shadow);
-      }
-      .summary-card {
-        padding: 14px 16px;
-      }
-      .summary-label {
         color: var(--muted);
-        font-size: 12px;
+        font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 0.08em;
       }
-      .summary-value {
-        margin-top: 8px;
-        font-size: 24px;
-        font-weight: 700;
+      button {
+        border: 1px solid var(--line-strong);
+        background: transparent;
+        color: var(--text);
+        padding: 6px 10px;
+        cursor: pointer;
+        font: inherit;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
       }
-      .summary-value.green { color: var(--green); }
-      .summary-value.red { color: var(--red); }
-      .summary-value.amber { color: var(--amber); }
-      .panel-grid {
+      button:hover {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .error {
+        display: none;
+        margin-top: 10px;
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(255, 92, 92, 0.35);
+        color: var(--red);
+      }
+      .status-strip {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        margin-top: 14px;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        background: var(--surface);
+      }
+      .metric {
+        padding: 10px 12px;
+        border-right: 1px solid var(--line);
+      }
+      .metric:last-child {
+        border-right: none;
+      }
+      .metric-label {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        margin-bottom: 6px;
+      }
+      .metric-value {
+        display: block;
+        font-size: 14px;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .metric-value.green { color: var(--green); }
+      .metric-value.red { color: var(--red); }
+      .metric-value.amber { color: var(--amber); }
+      .workspace {
         display: grid;
         grid-template-columns: 2fr 1fr;
         gap: 16px;
+        margin-top: 16px;
       }
-      .panel {
-        padding: 16px;
+      .stack {
+        display: grid;
+        gap: 18px;
       }
-      .panel h2 {
+      .section {
+        border-top: 1px solid var(--line-strong);
+        padding-top: 10px;
+      }
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: baseline;
+        margin-bottom: 8px;
+      }
+      .section-head h2 {
         margin: 0 0 12px;
-        font-size: 18px;
+        font-size: 11px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .section-head span {
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+      }
+      .table-wrap {
+        overflow-x: auto;
+        border-bottom: 1px solid var(--line);
       }
       table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 13px;
+        table-layout: fixed;
+        font-size: 12px;
       }
       th, td {
         text-align: left;
         padding: 8px 10px;
-        border-top: 1px solid #ece5d8;
+        border-top: 1px solid var(--line);
         vertical-align: top;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 0;
       }
       thead th {
         border-top: none;
         color: var(--muted);
-        font-size: 12px;
+        font-size: 10px;
         text-transform: uppercase;
-        letter-spacing: 0.07em;
+        letter-spacing: 0.14em;
+        font-weight: 500;
       }
-      .stack {
-        display: grid;
-        gap: 16px;
+      tbody tr:hover {
+        background: rgba(141, 214, 255, 0.04);
       }
-      .meta-list {
+      .wrap {
+        white-space: normal;
+        text-overflow: clip;
+        overflow-wrap: anywhere;
+      }
+      .portfolio-grid {
         display: grid;
-        gap: 10px;
+        gap: 0;
         font-size: 13px;
+        border-bottom: 1px solid var(--line);
       }
-      .meta-row {
+      .portfolio-row {
         display: flex;
         justify-content: space-between;
         gap: 12px;
-        border-top: 1px solid #ece5d8;
-        padding-top: 10px;
+        padding: 8px 0;
+        border-top: 1px solid var(--line);
       }
       .muted { color: var(--muted); }
       @media (max-width: 1100px) {
-        .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .panel-grid { grid-template-columns: 1fr; }
+        .status-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .workspace { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 720px) {
+        .topbar {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+        .controls {
+          flex-wrap: wrap;
+        }
       }
     </style>
   </head>
@@ -178,100 +244,119 @@ export function renderMonitorWebHtml(options: { title?: string } = {}): string {
           <p>Last updated <span id="last-updated">-</span></p>
         </div>
         <div class="controls">
-          <span class="muted">Auto-refresh: 250ms</span>
+          <span>Desk view</span>
+          <span>Auto-refresh: 250ms</span>
           <button id="refresh-button" type="button">Refresh</button>
         </div>
       </div>
       <div id="error-banner" class="error" role="alert"></div>
-      <section class="summary-grid">
-        <article class="summary-card">
-          <div class="summary-label">Risk</div>
-          <div id="risk-mode" class="summary-value">-</div>
-        </article>
-        <article class="summary-card">
-          <div class="summary-label">Total PnL</div>
-          <div id="total-pnl" class="summary-value">-</div>
-        </article>
-        <article class="summary-card">
-          <div class="summary-label">Net Inventory</div>
-          <div id="net-inventory" class="summary-value">-</div>
-        </article>
-        <article class="summary-card">
-          <div class="summary-label">Open Orders</div>
-          <div id="open-orders" class="summary-value">-</div>
-        </article>
-        <article class="summary-card">
-          <div class="summary-label">Positions</div>
-          <div id="positions" class="summary-value">-</div>
-        </article>
-        <article class="summary-card">
-          <div class="summary-label">Account</div>
-          <div id="account-address" class="summary-value" style="font-size: 16px;">-</div>
-        </article>
+      <section class="status-strip">
+        <div class="metric">
+          <span class="metric-label">Risk</span>
+          <span id="risk-mode" class="metric-value">-</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Total PnL</span>
+          <span id="total-pnl" class="metric-value">-</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Net Inventory</span>
+          <span id="net-inventory" class="metric-value">-</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Open Orders</span>
+          <span id="open-orders" class="metric-value">-</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Positions</span>
+          <span id="positions" class="metric-value">-</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Account</span>
+          <span id="account-address" class="metric-value wrap">-</span>
+        </div>
       </section>
-      <div class="panel-grid">
+      <div class="workspace">
         <div class="stack">
-          <section class="panel">
-            <h2>Active Markets</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Market</th>
-                  <th>State</th>
-                  <th>Mode</th>
-                  <th>Quote</th>
-                  <th>Book</th>
-                  <th>Health</th>
-                  <th>Churn</th>
-                </tr>
-              </thead>
-              <tbody id="active-markets-body"></tbody>
-            </table>
+          <section class="section">
+            <div class="section-head">
+              <h2>Active Markets</h2>
+              <span>Live routing state</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Market</th>
+                    <th>State</th>
+                    <th>Mode</th>
+                    <th>Quote</th>
+                    <th>Book</th>
+                    <th>Health</th>
+                    <th>Churn</th>
+                  </tr>
+                </thead>
+                <tbody id="active-markets-body"></tbody>
+              </table>
+            </div>
           </section>
-          <section class="panel">
-            <h2>Recent Orders</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Market</th>
-                  <th>Side</th>
-                  <th>Status</th>
-                  <th>Price</th>
-                  <th>Size</th>
-                </tr>
-              </thead>
-              <tbody id="recent-orders-body"></tbody>
-            </table>
+          <section class="section">
+            <div class="section-head">
+              <h2>Recent Orders</h2>
+              <span>Execution tape</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Market</th>
+                    <th>Side</th>
+                    <th>Status</th>
+                    <th>Price</th>
+                    <th>Size</th>
+                  </tr>
+                </thead>
+                <tbody id="recent-orders-body"></tbody>
+              </table>
+            </div>
           </section>
-          <section class="panel">
-            <h2>Recent Fills</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Market</th>
-                  <th>Side</th>
-                  <th>Price</th>
-                  <th>Size</th>
-                  <th>Inventory Delta</th>
-                </tr>
-              </thead>
-              <tbody id="recent-fills-body"></tbody>
-            </table>
+          <section class="section">
+            <div class="section-head">
+              <h2>Recent Fills</h2>
+              <span>Fill tape</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Market</th>
+                    <th>Side</th>
+                    <th>Price</th>
+                    <th>Size</th>
+                    <th>Inventory Delta</th>
+                  </tr>
+                </thead>
+                <tbody id="recent-fills-body"></tbody>
+              </table>
+            </div>
           </section>
         </div>
         <div class="stack">
-          <section class="panel">
-            <h2>Portfolio</h2>
-            <div class="meta-list">
-              <div class="meta-row"><span class="muted">Flatten PnL USD</span><span id="portfolio-flatten-pnl">-</span></div>
-              <div class="meta-row"><span class="muted">Flatten PnL %</span><span id="portfolio-flatten-pct">-</span></div>
-              <div class="meta-row"><span class="muted">Net Inventory USD</span><span id="portfolio-inventory">-</span></div>
-              <div class="meta-row"><span class="muted">Open Orders</span><span id="portfolio-open-orders">-</span></div>
-              <div class="meta-row"><span class="muted">Normalized Open Orders</span><span id="portfolio-normalized-open-orders">-</span></div>
-              <div class="meta-row"><span class="muted">Has Unnormalized Open Orders</span><span id="portfolio-unnormalized-flag">-</span></div>
-              <div class="meta-row"><span class="muted">JWT Present</span><span id="portfolio-jwt">-</span></div>
+          <section class="section">
+            <div class="section-head">
+              <h2>Portfolio</h2>
+              <span>Account state</span>
+            </div>
+            <div class="portfolio-grid">
+              <div class="portfolio-row"><span class="muted">Flatten PnL USD</span><span id="portfolio-flatten-pnl">-</span></div>
+              <div class="portfolio-row"><span class="muted">Flatten PnL %</span><span id="portfolio-flatten-pct">-</span></div>
+              <div class="portfolio-row"><span class="muted">Net Inventory USD</span><span id="portfolio-inventory">-</span></div>
+              <div class="portfolio-row"><span class="muted">Open Orders</span><span id="portfolio-open-orders">-</span></div>
+              <div class="portfolio-row"><span class="muted">Normalized Open Orders</span><span id="portfolio-normalized-open-orders">-</span></div>
+              <div class="portfolio-row"><span class="muted">Has Unnormalized Open Orders</span><span id="portfolio-unnormalized-flag">-</span></div>
+              <div class="portfolio-row"><span class="muted">JWT Present</span><span id="portfolio-jwt">-</span></div>
             </div>
           </section>
         </div>
@@ -322,11 +407,11 @@ export function renderMonitorWebHtml(options: { title?: string } = {}): string {
         document.getElementById('last-updated').textContent = snapshot.generatedAt ?? '-';
         const risk = document.getElementById('risk-mode');
         risk.textContent = snapshot.risk.mode + (snapshot.risk.reason ? ' (' + snapshot.risk.reason + ')' : '');
-        risk.className = 'summary-value ' + riskClass(snapshot.risk.mode);
+        risk.className = 'metric-value ' + riskClass(snapshot.risk.mode);
 
         const totalPnl = document.getElementById('total-pnl');
         totalPnl.textContent = formatUsd(snapshot.portfolio.flattenPnlUsd);
-        totalPnl.className = 'summary-value ' + pnlClass(snapshot.portfolio.flattenPnlUsd);
+        totalPnl.className = 'metric-value ' + pnlClass(snapshot.portfolio.flattenPnlUsd);
 
         document.getElementById('net-inventory').textContent = formatUsd(snapshot.portfolio.netInventoryUsd);
         document.getElementById('open-orders').textContent = String(snapshot.privateState?.openOrders ?? 0);
@@ -346,7 +431,7 @@ export function renderMonitorWebHtml(options: { title?: string } = {}): string {
           '<td>' + market.marketId + '</td>' +
           '<td>' + (market.state ?? '-') + '</td>' +
           '<td>' + (market.selectedMode ?? '-') + '</td>' +
-          '<td>' + formatPrice(market.quoteBid) + ' / ' + formatPrice(market.quoteAsk) + ' @ ' + formatUsd(market.quoteBidSizeUsd) + ' / ' + formatUsd(market.quoteAskSizeUsd) + '</td>' +
+          '<td class="wrap">' + formatPrice(market.quoteBid) + ' / ' + formatPrice(market.quoteAsk) + ' @ ' + formatUsd(market.quoteBidSizeUsd) + ' / ' + formatUsd(market.quoteAskSizeUsd) + '</td>' +
           '<td>' + formatPrice(market.bestBid) + ' / ' + formatPrice(market.bestAsk) + '</td>' +
           '<td>' + (market.health ?? '-') + '</td>' +
           '<td>' + String(market.quoteCountSinceFill ?? 0) + '</td>' +
@@ -355,7 +440,7 @@ export function renderMonitorWebHtml(options: { title?: string } = {}): string {
 
         renderRows('recent-orders-body', snapshot.recentOrders ?? [], 6, (order) =>
           '<tr>' +
-          '<td>' + (order.recordedAt ?? '-') + '</td>' +
+          '<td class="wrap">' + (order.recordedAt ?? '-') + '</td>' +
           '<td>' + order.marketId + '</td>' +
           '<td>' + (order.side ?? '-') + '</td>' +
           '<td>' + (order.status ?? '-') + '</td>' +
@@ -366,7 +451,7 @@ export function renderMonitorWebHtml(options: { title?: string } = {}): string {
 
         renderRows('recent-fills-body', snapshot.recentFills ?? [], 6, (fill) =>
           '<tr>' +
-          '<td>' + (fill.recordedAt ?? '-') + '</td>' +
+          '<td class="wrap">' + (fill.recordedAt ?? '-') + '</td>' +
           '<td>' + fill.marketId + '</td>' +
           '<td>' + (fill.side ?? '-') + '</td>' +
           '<td>' + formatPrice(fill.price) + '</td>' +
