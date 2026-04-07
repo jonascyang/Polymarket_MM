@@ -64,6 +64,7 @@ When `PREDICT_AUTH_BEARER_TOKEN` is not set, `npm run live` can obtain a JWT aut
 - `npm run shadow`: start the shadow runtime loop
 - `npm run live`: start the live runtime loop with signed order placement
 - `npm run monitor`: render a terminal snapshot from the local SQLite store
+- `npm run monitor-web`: serve a loopback-only web monitor from the local SQLite store
 - `npm run collect`: run the research sampler once, or continuously unless `--once` is passed
 - `npm run report`: print the research report from the local SQLite store
 - `npm run archive`: upload pending local archive objects to R2
@@ -71,6 +72,7 @@ When `PREDICT_AUTH_BEARER_TOKEN` is not set, `npm run live` can obtain a JWT aut
 
 `paper`, `shadow`, and `live` print JSON bootstrap/cycle snapshots and stop cleanly on `SIGINT` / `SIGTERM`.
 `monitor` supports `--once` and `--interval-ms=...`.
+`monitor-web` supports `--db=...`, `--host=...`, and `--port=...`.
 `collect` supports `--once`, `--interval-ms=...`, and `--first=...`.
 `report` supports `--db=...` and `--json`.
 `archive` supports `--min-age-ms=...`.
@@ -122,10 +124,12 @@ The recommended server setup is:
 - keep `npm run shadow` running continuously under `systemd`
 - run `npm run batch -- --first=100 --report-json` on an hourly timer
 - use `npm run monitor -- --once` manually against the same SQLite database when you want a point-in-time terminal view
+- keep `npm run monitor-web` running as a loopback-only dashboard for browser access over SSH tunnel
 
 Deployment assets live in:
 
 - `ops/systemd/predictfun-mm-shadow.service`
+- `ops/systemd/predictfun-mm-monitor.service`
 - `ops/systemd/predictfun-mm-batch.service`
 - `ops/systemd/predictfun-mm-batch.timer`
 
@@ -149,10 +153,12 @@ sudo mkdir -p /etc/predictfun-mm
 cd /opt/predictfun-mm
 npm install
 sudo cp ops/systemd/predictfun-mm-shadow.service /etc/systemd/system/
+sudo cp ops/systemd/predictfun-mm-monitor.service /etc/systemd/system/
 sudo cp ops/systemd/predictfun-mm-batch.service /etc/systemd/system/
 sudo cp ops/systemd/predictfun-mm-batch.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now predictfun-mm-shadow.service
+sudo systemctl enable --now predictfun-mm-monitor.service
 sudo systemctl enable --now predictfun-mm-batch.timer
 ```
 
@@ -160,9 +166,23 @@ Inspect them with:
 
 ```bash
 sudo systemctl status predictfun-mm-shadow.service
+sudo systemctl status predictfun-mm-monitor.service
 sudo systemctl status predictfun-mm-batch.timer
 sudo journalctl -u predictfun-mm-shadow.service -f
+sudo journalctl -u predictfun-mm-monitor.service -f
 sudo journalctl -u predictfun-mm-batch.service -n 100
+```
+
+Access the web monitor through an SSH tunnel:
+
+```bash
+ssh -L 8787:127.0.0.1:8787 root@your-server-ip
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8787
 ```
 
 ## Notes

@@ -48,15 +48,30 @@ describe("server deployment assets", () => {
     expect(service).toContain("KillSignal=SIGINT");
   });
 
+  test("includes a systemd monitor web service bound to loopback", () => {
+    const service = readWorkspaceFile("ops/systemd/predictfun-mm-monitor.service");
+
+    expect(service).toContain("Description=Predict.fun MM monitor web service");
+    expect(service).toContain("EnvironmentFile=/etc/predictfun-mm/predictfun-mm.env");
+    expect(service).toContain(
+      "ExecStart=/usr/bin/env bash -lc 'cd \"$PREDICT_MM_WORKDIR\" && npm run monitor-web -- --host=127.0.0.1 --port=8787'"
+    );
+    expect(service).toContain("Restart=always");
+    expect(service).toContain("KillSignal=SIGINT");
+  });
+
   test("documents the server soak workflow in the README", () => {
     const readme = readWorkspaceFile("README.md");
 
     expect(readme).toContain("## Server operation");
     expect(readme).toContain("ops/systemd/predictfun-mm-shadow.service");
+    expect(readme).toContain("ops/systemd/predictfun-mm-monitor.service");
     expect(readme).toContain("ops/systemd/predictfun-mm-batch.timer");
     expect(readme).toContain("/etc/predictfun-mm/predictfun-mm.env");
     expect(readme).toContain("npm install");
     expect(readme).toContain("systemctl enable --now predictfun-mm-shadow.service");
+    expect(readme).toContain("systemctl enable --now predictfun-mm-monitor.service");
     expect(readme).toContain("PREDICT_API_BASE_URL=https://api.predict.fun/v1");
+    expect(readme).toContain("ssh -L 8787:127.0.0.1:8787");
   });
 });

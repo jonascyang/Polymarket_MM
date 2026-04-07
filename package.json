@@ -12,6 +12,7 @@
     "report": "tsx src/runtime/run-report.ts",
     "batch": "tsx src/runtime/run-batch.ts",
     "monitor": "tsx src/runtime/run-monitor.ts",
+    "monitor-web": "tsx src/runtime/run-monitor-web.ts",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
