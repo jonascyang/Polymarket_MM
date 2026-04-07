@@ -555,7 +555,14 @@ describe("runRuntimeCycle", () => {
     });
 
     expect(result.marketPlans[0]?.nextState).toBe("Drain");
-    expect(result.orderDiff.create).toEqual([]);
+    expect(result.orderDiff.create).toEqual([
+      {
+        marketId: 10,
+        side: "ask",
+        price: 0.504,
+        sizeUsd: 8
+      }
+    ]);
   });
 
   it("places a drain exit once the selected price clears the market break-even floor", () => {
@@ -624,6 +631,86 @@ describe("runRuntimeCycle", () => {
         side: "ask",
         price: 0.504,
         sizeUsd: 2.016
+      }
+    ]);
+  });
+
+  it("promotes an existing non-zero inventory market into drain instead of leaving it paused", () => {
+    const result = runRuntimeCycle({
+      mode: "shadow",
+      markets: [
+        {
+          id: 10,
+          hoursToResolution: 96,
+          mid: 0.4,
+          spread: 0.001,
+          spreadThreshold: 0.06,
+          hasTwoSidedBook: true,
+          volume24hUsd: 20000,
+          isBoosted: false,
+          isVisible: true,
+          tradingStatus: "OPEN",
+          marketVariant: "DEFAULT",
+          isToxic: false,
+          currentState: "Protect",
+          inventoryUsd: -5.94,
+          maxInventoryUsd: 15,
+          tickSize: 0.001,
+          oneSidedFill: false,
+          quoteCountSinceFill: 12,
+          marketTradeRatePerMinute: 0,
+          touchMoveRatePerMinute: 0,
+          bestBid: 0.399,
+          bestAsk: 0.4,
+          bidBook: [
+            { price: 0.399, size: 124.44 },
+            { price: 0.397, size: 280 }
+          ],
+          askBook: [
+            { price: 0.4, size: 5223.40115 },
+            { price: 0.401, size: 160 }
+          ],
+          marketPool: "core_sports",
+          whitelistTier: "active",
+          marketHealth: "active-risky"
+        }
+      ],
+      currentOrders: [],
+      privateState: {
+        bearerTokenPresent: true,
+        account: null,
+        openOrders: [],
+        normalizedOpenOrders: [],
+        positions: [
+          {
+            id: "position-1",
+            market: { id: 10 },
+            outcome: { name: "No", indexSet: 2, onChainId: "10-no" },
+            amount: "9900900000000000000",
+            valueUsd: "5.94",
+            averageBuyPriceUsd: "0.606",
+            pnlUsd: "-0.06"
+          }
+        ],
+        inventoryByMarket: { 10: -5.94 },
+        hasUnnormalizedOpenOrders: false
+      },
+      riskInput: {
+        flattenPnlPct: -0.001,
+        peakDrawdownPct: -0.001,
+        aggregateNetInventoryUsd: -5.94,
+        aggregateNetInventoryCapUsd: 45,
+        minutesToExit: 180
+      }
+    });
+
+    expect(result.marketPlans[0]?.nextState).toBe("Drain");
+    expect(result.orderDiff.create).toEqual([
+      {
+        marketId: 10,
+        side: "bid",
+        price: 0.393,
+        sizeUsd: 8
       }
     ]);
   });

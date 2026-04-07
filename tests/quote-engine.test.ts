@@ -173,7 +173,7 @@ describe("buildQuotes", () => {
     expect(quotes.askSizeUsd).toBeGreaterThan(0);
   });
 
-  it("does not place a drain ask below the configured break-even floor", () => {
+  it("uses the configured break-even ask floor as the drain fallback quote", () => {
     const quotes = buildQuotes({
       mode: "Drain",
       fairValue: 0.5,
@@ -187,10 +187,11 @@ describe("buildQuotes", () => {
       minAskPrice: 0.503
     });
 
-    expect(quotes.askSizeUsd).toBe(0);
+    expect(quotes.ask).toBe(0.503);
+    expect(quotes.askSizeUsd).toBeGreaterThan(0);
   });
 
-  it("does not place a drain bid above the configured break-even cap", () => {
+  it("uses the configured break-even bid cap as the drain fallback quote", () => {
     const quotes = buildQuotes({
       mode: "Drain",
       fairValue: 0.5,
@@ -204,7 +205,8 @@ describe("buildQuotes", () => {
       maxBidPrice: 0.497
     });
 
-    expect(quotes.bidSizeUsd).toBe(0);
+    expect(quotes.bid).toBe(0.497);
+    expect(quotes.bidSizeUsd).toBeGreaterThan(0);
   });
 
   it("stops quoting the missing side when protect mode sees a one-sided book", () => {

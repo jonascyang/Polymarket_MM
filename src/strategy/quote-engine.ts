@@ -211,7 +211,8 @@ function selectBidQuote(
   bidCap: number,
   fallbackBid: number,
   bidSizeUsd: number,
-  tickSize: number
+  tickSize: number,
+  allowFallbackOutsideBook = false
 ): { price: number; level?: QuoteBookLevel } | null {
   if (levels.length === 0) {
     return { price: fallbackBid };
@@ -220,7 +221,7 @@ function selectBidQuote(
   const valid = validBidCandidates(levels, bidCap);
 
   if (valid.length === 0) {
-    return null;
+    return allowFallbackOutsideBook ? { price: fallbackBid } : null;
   }
 
   if (shouldPreferSecondLevel(valid[0], valid[1], bidSizeUsd, tickSize)) {
@@ -235,7 +236,8 @@ function selectAskQuote(
   askFloor: number,
   fallbackAsk: number,
   askSizeUsd: number,
-  tickSize: number
+  tickSize: number,
+  allowFallbackOutsideBook = false
 ): { price: number; level?: QuoteBookLevel } | null {
   if (levels.length === 0) {
     return { price: fallbackAsk };
@@ -244,7 +246,7 @@ function selectAskQuote(
   const valid = validAskCandidates(levels, askFloor);
 
   if (valid.length === 0) {
-    return null;
+    return allowFallbackOutsideBook ? { price: fallbackAsk } : null;
   }
 
   if (shouldPreferSecondLevel(valid[0], valid[1], askSizeUsd, tickSize)) {
@@ -342,19 +344,22 @@ export function buildQuotes(input: BuildQuotesInput): QuotePlan {
     input.maxBidPrice === undefined ? fallbackBid : Math.min(fallbackBid, input.maxBidPrice);
   const askFloor =
     input.minAskPrice === undefined ? fallbackAsk : Math.max(fallbackAsk, input.minAskPrice);
+  const allowDrainFallback = input.mode === "Drain";
   const selectedBid = selectBidQuote(
     normalizeBookSide(input.bidBook, input.bestBid),
     bidCap,
-    fallbackBid,
+    input.maxBidPrice ?? fallbackBid,
     provisionalBidSizeUsd,
-    input.tickSize
+    input.tickSize,
+    allowDrainFallback
   );
   const selectedAsk = selectAskQuote(
     normalizeBookSide(input.askBook, input.bestAsk),
     askFloor,
-    fallbackAsk,
+    input.minAskPrice ?? fallbackAsk,
     provisionalAskSizeUsd,
-    input.tickSize
+    input.tickSize,
+    allowDrainFallback
   );
   const bidVisibleQueueBudgetUsd = getVisibleQueueBudgetUsd(
     selectedBid?.level,

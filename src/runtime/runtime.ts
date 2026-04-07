@@ -892,6 +892,19 @@ function getDrainPriceBounds(
   };
 }
 
+function canDrainInventory(
+  market: RuntimeMarketInput,
+  privateState?: RuntimePrivateState
+): boolean {
+  if (market.inventoryUsd === 0) {
+    return false;
+  }
+
+  const bounds = getDrainPriceBounds(market, privateState);
+
+  return bounds.minAskPrice !== undefined || bounds.maxBidPrice !== undefined;
+}
+
 function resolveQuoteMode(state: MarketState): QuoteMode | null {
   switch (state) {
     case "Quote":
@@ -1107,6 +1120,14 @@ export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
           selectedById.has(market.id) &&
           market.marketHealth !== "inactive-or-toxic"
       });
+
+      if (
+        nextState === "Pause" &&
+        risk.mode === "Normal" &&
+        canDrainInventory(market, input.privateState)
+      ) {
+        nextState = "Drain";
+      }
     }
 
     const quoteMode = resolveQuoteMode(nextState);
