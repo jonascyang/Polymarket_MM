@@ -510,7 +510,7 @@ describe("runConfiguredRuntimeOnce", () => {
       marketId: 10,
       side: "ask",
       price: 0.4,
-      sizeUsd: 3.2
+      sizeUsd: 4.8
     });
   });
 

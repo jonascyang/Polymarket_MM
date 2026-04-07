@@ -323,7 +323,13 @@ export function normalizeOpenOrder(
   }
 
   const remainingAmount = parseWeiDecimal(remainingAmountWei.toString());
-  const sizeUsd = Number((remainingAmount * normalized.price).toFixed(6));
+  const totalAmount = parseWeiDecimal(order.amount);
+
+  if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+    return null;
+  }
+
+  const sizeUsd = Number(((makerAmount * remainingAmount) / totalAmount).toFixed(6));
 
   if (!Number.isFinite(sizeUsd) || sizeUsd <= 0) {
     return null;
