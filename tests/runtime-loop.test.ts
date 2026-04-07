@@ -198,9 +198,9 @@ describe("createRuntimeLoop", () => {
 
     expect(connectCount).toBe(1);
     expect(subscribed).toEqual([[
-      `predictOrderbook/${TERTIARY_MARKET_ID}`,
       `predictOrderbook/${PRIMARY_MARKET_ID}`,
-      `predictOrderbook/${SECONDARY_MARKET_ID}`
+      `predictOrderbook/${SECONDARY_MARKET_ID}`,
+      `predictOrderbook/${TERTIARY_MARKET_ID}`
     ]]);
     expect(snapshot.cycleCount).toBe(1);
   });
@@ -221,9 +221,9 @@ describe("createRuntimeLoop", () => {
     const snapshot = await loop.bootstrap();
 
     expect(snapshot.markets.map((market) => [market.id, market.currentState])).toEqual([
-      [PRIMARY_MARKET_ID, "Protect"],
+      [PRIMARY_MARKET_ID, "Quote"],
       [SECONDARY_MARKET_ID, "Protect"],
-      [TERTIARY_MARKET_ID, "Quote"]
+      [TERTIARY_MARKET_ID, "Protect"]
     ]);
   });
 
@@ -338,9 +338,9 @@ describe("createRuntimeLoop", () => {
 
     expect(subscribed).toEqual([
       [
-        `predictOrderbook/${TERTIARY_MARKET_ID}`,
         `predictOrderbook/${PRIMARY_MARKET_ID}`,
         `predictOrderbook/${SECONDARY_MARKET_ID}`,
+        `predictOrderbook/${TERTIARY_MARKET_ID}`,
         "predictWalletEvents/jwt-token"
       ]
     ]);
@@ -914,9 +914,9 @@ describe("createRuntimeLoop", () => {
     expect(portfolioSnapshot.net_inventory_usd).toBe(0);
     expect(JSON.parse(portfolioSnapshot.payload_json).aggregateNetInventoryUsd).toBe(0);
     expect(marketStates).toEqual([
-      { market_id: TERTIARY_MARKET_ID, state: "Quote" },
-      { market_id: PRIMARY_MARKET_ID, state: "Protect" },
-      { market_id: SECONDARY_MARKET_ID, state: "Protect" },
+      { market_id: TERTIARY_MARKET_ID, state: "Protect" },
+      { market_id: PRIMARY_MARKET_ID, state: "Quote" },
+      { market_id: SECONDARY_MARKET_ID, state: "Protect" }
     ]);
     expect(
       marketRegimes.map((row) => ({
@@ -929,17 +929,17 @@ describe("createRuntimeLoop", () => {
     ).toEqual([
       {
         market_id: TERTIARY_MARKET_ID,
-        current_state: "Quote",
+        current_state: "Protect",
         is_boosted: 0,
         volume24h_usd: 12000,
-        marketHealth: "active-safe"
+        marketHealth: "active-risky"
       },
       {
         market_id: PRIMARY_MARKET_ID,
-        current_state: "Protect",
+        current_state: "Quote",
         is_boosted: 0,
         volume24h_usd: 18000,
-        marketHealth: "active-risky"
+        marketHealth: "active-safe"
       },
       {
         market_id: SECONDARY_MARKET_ID,

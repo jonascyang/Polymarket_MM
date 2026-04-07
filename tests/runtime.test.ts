@@ -1498,8 +1498,8 @@ describe("runConfiguredRuntimeOnce", () => {
         whitelistTier: market.whitelistTier
       }))
     ).toEqual([
-      { id: 1469, marketPool: "core_sports", whitelistTier: "watch" },
-      { id: 1520, marketPool: "core_sports", whitelistTier: "watch" },
+      { id: 1469, marketPool: "core_sports", whitelistTier: "active" },
+      { id: 1520, marketPool: "core_sports", whitelistTier: "active" },
       { id: 933, marketPool: "satellite_token", whitelistTier: "active" },
       { id: 122491, marketPool: "other", whitelistTier: undefined }
     ]);

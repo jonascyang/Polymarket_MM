@@ -28,13 +28,13 @@ export type MarketCandidate = {
 
 const RUNTIME_MARKET_WHITELIST = new Map<number, RuntimeWhitelistEntry>([
   [1518, { marketPool: "core_sports", whitelistTier: "active" }],
+  [1469, { marketPool: "core_sports", whitelistTier: "active" }],
+  [1520, { marketPool: "core_sports", whitelistTier: "active" }],
   [1471, { marketPool: "core_sports", whitelistTier: "active" }],
-  [1523, { marketPool: "core_sports", whitelistTier: "active" }],
-  [1582, { marketPool: "core_sports", whitelistTier: "active" }],
+  [1523, { marketPool: "core_sports", whitelistTier: "watch" }],
   [1545, { marketPool: "core_sports", whitelistTier: "watch" }],
   [1595, { marketPool: "core_sports", whitelistTier: "watch" }],
-  [1469, { marketPool: "core_sports", whitelistTier: "watch" }],
-  [1520, { marketPool: "core_sports", whitelistTier: "watch" }],
+  [1582, { marketPool: "core_sports", whitelistTier: "watch" }],
   [933, { marketPool: "satellite_token", whitelistTier: "active" }],
   [991, { marketPool: "satellite_token", whitelistTier: "active" }],
   [993, { marketPool: "satellite_token", whitelistTier: "active" }],

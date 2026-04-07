@@ -61,7 +61,7 @@ describe("isEligibleMarket", () => {
     });
     expect(resolveRuntimeWhitelistEntry(1469)).toEqual({
       marketPool: "core_sports",
-      whitelistTier: "watch"
+      whitelistTier: "active"
     });
     expect(resolveRuntimeWhitelistEntry(933)).toEqual({
       marketPool: "satellite_token",
