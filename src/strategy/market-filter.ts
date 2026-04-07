@@ -61,6 +61,10 @@ export function resolveRuntimeWhitelistEntry(
   return RUNTIME_MARKET_WHITELIST.get(marketId) ?? null;
 }
 
+export function getRuntimeWhitelistMarketIds(): number[] {
+  return [...RUNTIME_MARKET_WHITELIST.keys()];
+}
+
 export function passesStructureFilter(market: MarketCandidate): boolean {
   return (
     market.tradingStatus === "OPEN" &&

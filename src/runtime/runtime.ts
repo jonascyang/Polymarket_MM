@@ -43,6 +43,7 @@ import {
 } from "../strategy/quote-engine";
 import { nextMarketState, type MarketState } from "../strategy/state-machine";
 import {
+  getRuntimeWhitelistMarketIds,
   resolveRuntimeWhitelistEntry,
   type MarketCandidate,
   type MarketHealth
@@ -524,15 +525,45 @@ async function loadRuntimeMarkets(
   services: RuntimeServices,
   options: RunConfiguredRuntimeOptions
 ): Promise<RuntimeMarketInput[]> {
+  const first = options.first ?? 20;
   const marketsResponse = await services.restClient.getMarkets({
-    first: options.first ?? 20,
+    first,
     status: "OPEN",
     includeStats: true,
     sort: "VOLUME_24H_DESC"
   });
+  const retainedMarkets = [...marketsResponse.data];
+  const retainedMarketIds = new Set(retainedMarkets.map((market) => market.id));
+  const missingWhitelistIds = new Set(
+    getRuntimeWhitelistMarketIds().filter((marketId) => !retainedMarketIds.has(marketId))
+  );
+
+  let cursor = marketsResponse.cursor;
+
+  while (cursor && missingWhitelistIds.size > 0) {
+    const pagedMarketsResponse = await services.restClient.getMarkets({
+      first,
+      after: cursor,
+      status: "OPEN",
+      includeStats: true,
+      sort: "VOLUME_24H_DESC"
+    });
+
+    for (const market of pagedMarketsResponse.data) {
+      if (!missingWhitelistIds.has(market.id)) {
+        continue;
+      }
+
+      retainedMarkets.push(market);
+      retainedMarketIds.add(market.id);
+      missingWhitelistIds.delete(market.id);
+    }
+
+    cursor = pagedMarketsResponse.cursor;
+  }
 
   return Promise.all(
-    marketsResponse.data.map(async (market) => {
+    retainedMarkets.map(async (market) => {
       const whitelistEntry = resolveRuntimeWhitelistEntry(market.id);
       services.recorder.recordMarketSnapshot(market);
 

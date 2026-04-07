@@ -777,6 +777,170 @@ describe("runConfiguredRuntimeOnce", () => {
     ]);
   });
 
+  it("loads missing whitelist markets from later market pages", async () => {
+    const getMarketsCalls: Array<string | undefined> = [];
+    const buildMarket = (
+      id: number,
+      title: string,
+      categorySlug: string,
+      volume24hUsd: number
+    ) => ({
+      id,
+      title,
+      question: `${title}?`,
+      description: "",
+      tradingStatus: "OPEN",
+      status: "OPEN",
+      isVisible: true,
+      isNegRisk: categorySlug.includes("nba") || categorySlug.includes("fifa"),
+      isYieldBearing: categorySlug.includes("nba") || categorySlug.includes("fifa"),
+      feeRateBps: 200,
+      oracleQuestionId: `oq-${id}`,
+      conditionId: `cond-${id}`,
+      resolverAddress: "0x0",
+      outcomes: [
+        { name: "Yes", indexSet: 1, onChainId: `${id}-yes` },
+        { name: "No", indexSet: 2, onChainId: `${id}-no` }
+      ],
+      spreadThreshold: 0.06,
+      shareThreshold: 1,
+      isBoosted: false,
+      polymarketConditionIds: [],
+      categorySlug,
+      createdAt: "2026-04-02T00:00:00Z",
+      decimalPrecision: 3,
+      marketVariant: "DEFAULT",
+      imageUrl: "",
+      stats: {
+        totalLiquidityUsd: 1000,
+        volume24hUsd,
+        volumeTotalUsd: volume24hUsd * 2
+      }
+    });
+
+    const state = await bootstrapConfiguredRuntimeState(
+      "live",
+      {
+        apiBaseUrl: "https://api.predict.fun/v1",
+        wsUrl: "wss://ws.predict.fun/ws",
+        apiKey: "key",
+        dbPath: ":memory:",
+        bearerToken: "jwt"
+      },
+      {
+        first: 2,
+        database: openAnalyticsStore(":memory:"),
+        restClient: {
+          async getMarkets(query = {}) {
+            getMarketsCalls.push(query.after);
+
+            if (!query.after) {
+              return {
+                success: true,
+                cursor: "page-2",
+                data: [
+                  buildMarket(1518, "Spain", "2026-fifa-world-cup-winner", 500000),
+                  buildMarket(933, "Base", "will-base-launch-a-token-by", 700000)
+                ]
+              };
+            }
+
+            expect(query.after).toBe("page-2");
+
+            return {
+              success: true,
+              data: [
+                buildMarket(991, "Polymarket", "will-polymarket-launch-a-token-by", 280000),
+                buildMarket(1469, "Oklahoma City Thunder", "2026-nba-champion", 27000)
+              ]
+            };
+          },
+          async getMarketOrderbook(marketId) {
+            const midByMarket: Record<number, number> = {
+              1518: 0.1575,
+              933: 0.3595,
+              991: 0.8755,
+              1469: 0.3995
+            };
+            const mid = midByMarket[marketId] ?? 0.5;
+
+            return {
+              success: true,
+              data: {
+                marketId,
+                updateTimestampMs: 1,
+                bids: [[Number((mid - 0.0005).toFixed(3)), 100]],
+                asks: [[Number((mid + 0.0005).toFixed(3)), 120]]
+              }
+            };
+          },
+          async getMarketLastSale() {
+            return {
+              success: true,
+              data: {
+                quoteType: "BID",
+                outcome: "YES",
+                priceInCurrency: "0.46",
+                strategy: "LIMIT"
+              }
+            };
+          },
+          async getOrders() {
+            return {
+              success: true,
+              data: []
+            };
+          },
+          async getPositions() {
+            return {
+              success: true,
+              data: [
+                {
+                  id: "position-1469-no",
+                  market: { id: 1469 },
+                  outcome: { name: "No", indexSet: 2, onChainId: "1469-no" },
+                  amount: "10000000000000000000",
+                  valueUsd: "5.94",
+                  averageBuyPriceUsd: "0.606",
+                  pnlUsd: "-0.06"
+                },
+                {
+                  id: "position-991-yes",
+                  market: { id: 991 },
+                  outcome: { name: "Yes", indexSet: 1, onChainId: "991-yes" },
+                  amount: "10000000000000000000",
+                  valueUsd: "1.83",
+                  averageBuyPriceUsd: "0.8722",
+                  pnlUsd: "-0.14"
+                }
+              ]
+            };
+          },
+          async getAccount() {
+            return {
+              success: true,
+              data: {
+                name: "bot",
+                address: "0xabc",
+                referral: {},
+                points: {}
+              }
+            };
+          }
+        }
+      }
+    );
+
+    expect(getMarketsCalls).toEqual([undefined, "page-2"]);
+    expect(state.markets.some((market) => market.id === 1469)).toBe(true);
+    expect(state.markets.some((market) => market.id === 991)).toBe(true);
+    expect(state.result.marketPlans.map((plan) => [plan.marketId, plan.selectedMode])).toEqual([
+      [1469, "Quote"],
+      [1518, "Protect"],
+      [991, "Protect"]
+    ]);
+  });
+
   it("refreshes live current orders from normalized private open orders", async () => {
     let orderBookVersion = 1;
 
