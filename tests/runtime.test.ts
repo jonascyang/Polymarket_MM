@@ -12,7 +12,8 @@ import {
   getExecutionPolicy,
   normalizeOpenOrder,
   runConfiguredRuntimeOnce,
-  runRuntimeCycle
+  runRuntimeCycle,
+  type RuntimeMarketInput
 } from "../src/runtime/runtime";
 import { openAnalyticsStore } from "../src/storage/sqlite";
 
@@ -142,6 +143,133 @@ describe("runRuntimeCycle", () => {
       [12, "Protect"]
     ]);
     expect(result.orderDiff.create).toHaveLength(6);
+  });
+
+  it("scales quote sizes with portfolio utilization pressure", () => {
+    const market: RuntimeMarketInput = {
+      id: 1518,
+      hoursToResolution: 96,
+      mid: 0.5,
+      spread: 0.002,
+      spreadThreshold: 0.06,
+      hasTwoSidedBook: true,
+      volume24hUsd: 18000,
+      isBoosted: true,
+      isVisible: true,
+      tradingStatus: "OPEN",
+      marketVariant: "DEFAULT",
+      isToxic: false,
+      currentState: "Observe",
+      inventoryUsd: 0,
+      maxInventoryUsd: 15,
+      tickSize: 0.001,
+      oneSidedFill: false,
+      marketPool: "core_sports" as const,
+      whitelistTier: "active" as const,
+      marketHealth: "active-safe" as const,
+      bidBook: [
+        { price: 0.499, size: 300 },
+        { price: 0.497, size: 100 }
+      ],
+      askBook: [
+        { price: 0.501, size: 300 },
+        { price: 0.503, size: 100 }
+      ],
+      bestBid: 0.499,
+      bestAsk: 0.501
+    };
+
+    const lowUtilization = runRuntimeCycle({
+      mode: "shadow",
+      markets: [market],
+      currentOrders: [],
+      privateState: {
+        bearerTokenPresent: true,
+        account: null,
+        openOrders: [],
+        normalizedOpenOrders: [],
+        positions: [],
+        inventoryByMarket: {},
+        hasUnnormalizedOpenOrders: false
+      },
+      riskInput: {
+        flattenPnlPct: -0.001,
+        peakDrawdownPct: -0.001,
+        aggregateNetInventoryUsd: 0,
+        aggregateNetInventoryCapUsd: 45,
+        minutesToExit: 180
+      }
+    });
+
+    const highUtilization = runRuntimeCycle({
+      mode: "shadow",
+      markets: [market],
+      currentOrders: [],
+      privateState: {
+        bearerTokenPresent: true,
+        account: null,
+        openOrders: [],
+        normalizedOpenOrders: [],
+        positions: [
+          {
+            id: "position-a",
+            market: { id: 1518 },
+            outcome: { name: "Yes", indexSet: 1, onChainId: "1518-yes" },
+            amount: "1000000000000000000",
+            valueUsd: "50",
+            averageBuyPriceUsd: "0.5",
+            pnlUsd: "0"
+          },
+          {
+            id: "position-b",
+            market: { id: 1518 },
+            outcome: { name: "No", indexSet: 2, onChainId: "1518-no" },
+            amount: "1000000000000000000",
+            valueUsd: "45",
+            averageBuyPriceUsd: "0.5",
+            pnlUsd: "0"
+          }
+        ],
+        inventoryByMarket: {},
+        hasUnnormalizedOpenOrders: false
+      },
+      riskInput: {
+        flattenPnlPct: -0.001,
+        peakDrawdownPct: -0.001,
+        aggregateNetInventoryUsd: 0,
+        aggregateNetInventoryCapUsd: 45,
+        minutesToExit: 180
+      }
+    });
+
+    expect(lowUtilization.orderDiff.create).toEqual([
+      {
+        marketId: 1518,
+        side: "bid",
+        price: 0.499,
+        sizeUsd: 12
+      },
+      {
+        marketId: 1518,
+        side: "ask",
+        price: 0.501,
+        sizeUsd: 12
+      }
+    ]);
+    expect(highUtilization.orderDiff.create).toEqual([
+      {
+        marketId: 1518,
+        side: "bid",
+        price: 0.499,
+        sizeUsd: 4.5
+      },
+      {
+        marketId: 1518,
+        side: "ask",
+        price: 0.501,
+        sizeUsd: 4.5
+      }
+    ]);
   });
 
   it("throttles markets after repeated quote churn without fills", () => {

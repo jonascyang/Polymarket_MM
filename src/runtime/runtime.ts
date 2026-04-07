@@ -749,6 +749,10 @@ const PAUSE_MARKET_TRADE_RATE_THRESHOLD = 0.1;
 const PAUSE_TOUCH_RATE_THRESHOLD = 0.2;
 const THROTTLE_MIN_REFRESH_INTERVAL_MS = 30_000;
 const QUOTE_SIZE_MATCH_TOLERANCE = 0.001;
+const PORTFOLIO_CAPITAL_USD = 100;
+const LOW_UTILIZATION_SIZE_MULTIPLIER = 2;
+const MID_UTILIZATION_SIZE_MULTIPLIER = 1.5;
+const HIGH_UTILIZATION_SIZE_MULTIPLIER = 0.75;
 
 function isMarketActiveForChurn(market: RuntimeMarketInput): boolean {
   return (
@@ -770,6 +774,41 @@ function shouldPauseMarket(market: RuntimeMarketInput): boolean {
     (market.marketTradeRatePerMinute ?? 0) < PAUSE_MARKET_TRADE_RATE_THRESHOLD &&
     (market.touchMoveRatePerMinute ?? 0) < PAUSE_TOUCH_RATE_THRESHOLD
   );
+}
+
+function getPortfolioNotionalUsd(privateState?: RuntimePrivateState): number {
+  if (!privateState) {
+    return 0;
+  }
+
+  const positionNotionalUsd = privateState.positions.reduce(
+    (sum, position) => sum + Math.abs(parseUsd(position.valueUsd)),
+    0
+  );
+  const openOrderNotionalUsd = privateState.normalizedOpenOrders.reduce(
+    (sum, order) => sum + Math.abs(order.sizeUsd),
+    0
+  );
+
+  return positionNotionalUsd + openOrderNotionalUsd;
+}
+
+function getPortfolioUtilizationMultiplier(privateState?: RuntimePrivateState): number {
+  if (!privateState) {
+    return 1;
+  }
+
+  const utilization = getPortfolioNotionalUsd(privateState) / PORTFOLIO_CAPITAL_USD;
+
+  if (utilization < 0.7) {
+    return LOW_UTILIZATION_SIZE_MULTIPLIER;
+  }
+
+  if (utilization < 0.9) {
+    return MID_UTILIZATION_SIZE_MULTIPLIER;
+  }
+
+  return HIGH_UTILIZATION_SIZE_MULTIPLIER;
 }
 
 function resolveQuoteMode(state: MarketState): QuoteMode | null {
@@ -849,6 +888,7 @@ function buildQuoteOrders(
   market: RuntimeMarketInput,
   nextState: MarketState,
   currentOrders: ManagedOrder[],
+  privateState: RuntimePrivateState | undefined,
   nowMs: number,
   aggregateNetInventoryUsd: number | undefined,
   aggregateNetInventoryCapUsd: number | undefined,
@@ -870,6 +910,8 @@ function buildQuoteOrders(
     bestAsk: market.bestAsk,
     bidBook: market.bidBook,
     askBook: market.askBook,
+    scoreQuoteSizeUsd: (mode === "Quote" ? 6 : 4) * getPortfolioUtilizationMultiplier(privateState),
+    defendQuoteSizeUsd: 4 * getPortfolioUtilizationMultiplier(privateState),
     aggregateNetInventoryUsd,
     aggregateNetInventoryCapUsd,
     quoteBudgetUsd
@@ -996,6 +1038,8 @@ export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
           bestAsk: market.bestAsk,
           bidBook: market.bidBook,
           askBook: market.askBook,
+          scoreQuoteSizeUsd: (quoteMode === "Quote" ? 6 : 4) * getPortfolioUtilizationMultiplier(input.privateState),
+          defendQuoteSizeUsd: 4 * getPortfolioUtilizationMultiplier(input.privateState),
           aggregateNetInventoryUsd,
           aggregateNetInventoryCapUsd,
           quoteBudgetUsd: input.quoteBudgetUsd
@@ -1014,6 +1058,7 @@ export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
         market,
         nextState,
         input.currentOrders,
+        input.privateState,
         nowMs,
         aggregateNetInventoryUsd,
         aggregateNetInventoryCapUsd,
