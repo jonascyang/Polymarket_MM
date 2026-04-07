@@ -35,7 +35,12 @@ import type { NormalizedBookLevel } from "../recorder/normalizers";
 import { openAnalyticsStore } from "../storage/sqlite";
 import { evaluateRiskMode, type EvaluateRiskInput, type RiskEvaluation } from "../risk/risk-controller";
 import { selectActiveMarkets } from "../strategy/market-selector";
-import { buildQuotes, type QuoteMode, type QuotePlan } from "../strategy/quote-engine";
+import {
+  buildQuotes,
+  isQuotePriceCompetitive,
+  type QuoteMode,
+  type QuotePlan
+} from "../strategy/quote-engine";
 import { nextMarketState, type MarketState } from "../strategy/state-machine";
 import {
   resolveRuntimeWhitelistEntry,
@@ -707,9 +712,12 @@ function shouldEmergencyFlatten(risk: RiskEvaluation): boolean {
 
 const HIGH_QUOTE_CHURN_THRESHOLD = 6;
 const PAUSE_QUOTE_CHURN_THRESHOLD = 12;
-const ACTIVE_MARKET_TRADE_RATE_THRESHOLD = 0.2;
-const ACTIVE_TOUCH_RATE_THRESHOLD = 0.5;
+const ACTIVE_MARKET_TRADE_RATE_THRESHOLD = 0.25;
+const ACTIVE_TOUCH_RATE_THRESHOLD = 1;
+const PAUSE_MARKET_TRADE_RATE_THRESHOLD = 0.1;
+const PAUSE_TOUCH_RATE_THRESHOLD = 0.2;
 const THROTTLE_MIN_REFRESH_INTERVAL_MS = 30_000;
+const QUOTE_SIZE_MATCH_TOLERANCE = 0.001;
 
 function isMarketActiveForChurn(market: RuntimeMarketInput): boolean {
   return (
@@ -728,7 +736,8 @@ function hasHighQuoteToFillRatio(market: RuntimeMarketInput): boolean {
 function shouldPauseMarket(market: RuntimeMarketInput): boolean {
   return (
     (market.quoteCountSinceFill ?? 0) >= PAUSE_QUOTE_CHURN_THRESHOLD &&
-    isMarketActiveForChurn(market)
+    (market.marketTradeRatePerMinute ?? 0) < PAUSE_MARKET_TRADE_RATE_THRESHOLD &&
+    (market.touchMoveRatePerMinute ?? 0) < PAUSE_TOUCH_RATE_THRESHOLD
   );
 }
 
@@ -749,14 +758,53 @@ function resolveQuoteMode(state: MarketState): QuoteMode | null {
 
 function shouldPreserveThrottleQuotes(
   market: RuntimeMarketInput,
+  currentOrders: ManagedOrder[],
+  quotes: QuotePlan | null,
+  quoteBudgetUsd: number | undefined,
   nextState: MarketState,
   nowMs: number
 ): boolean {
-  return (
-    nextState === "Throttle" &&
-    market.lastQuoteUpdateAtMs !== undefined &&
-    nowMs - market.lastQuoteUpdateAtMs < THROTTLE_MIN_REFRESH_INTERVAL_MS
-  );
+  if (
+    nextState !== "Throttle" ||
+    market.lastQuoteUpdateAtMs === undefined ||
+    nowMs - market.lastQuoteUpdateAtMs >= THROTTLE_MIN_REFRESH_INTERVAL_MS ||
+    quotes === null
+  ) {
+    return false;
+  }
+
+  const marketOrders = getCurrentMarketOrders(currentOrders, market.id);
+  const expectedSideCount =
+    Number(quotes.bidSizeUsd > 0) + Number(quotes.askSizeUsd > 0);
+
+  if (marketOrders.length === 0 || marketOrders.length !== expectedSideCount) {
+    return false;
+  }
+
+  return marketOrders.every((order) => {
+    const expectedSizeUsd = order.side === "bid" ? quotes.bidSizeUsd : quotes.askSizeUsd;
+
+    return (
+      Math.abs(order.sizeUsd - expectedSizeUsd) <= QUOTE_SIZE_MATCH_TOLERANCE &&
+      isQuotePriceCompetitive(
+        {
+          mode: "Throttle",
+          fairValue: market.mid,
+          inventoryUsd: market.inventoryUsd,
+          maxInventoryUsd: market.maxInventoryUsd,
+          tickSize: market.tickSize,
+          bestBid: market.bestBid,
+          bestAsk: market.bestAsk,
+          bidBook: market.bidBook,
+          askBook: market.askBook,
+          quoteBudgetUsd
+        },
+        order.side,
+        order.price,
+        order.sizeUsd
+      )
+    );
+  });
 }
 
 function getCurrentMarketOrders(
@@ -775,10 +823,6 @@ function buildQuoteOrders(
   aggregateNetInventoryCapUsd: number | undefined,
   quoteBudgetUsd: number | undefined
 ): ManagedOrder[] {
-  if (shouldPreserveThrottleQuotes(market, nextState, nowMs)) {
-    return getCurrentMarketOrders(currentOrders, market.id);
-  }
-
   const mode = resolveQuoteMode(nextState);
 
   if (mode === null) {
@@ -793,10 +837,16 @@ function buildQuoteOrders(
     tickSize: market.tickSize,
     bestBid: market.bestBid,
     bestAsk: market.bestAsk,
+    bidBook: market.bidBook,
+    askBook: market.askBook,
     aggregateNetInventoryUsd,
     aggregateNetInventoryCapUsd,
     quoteBudgetUsd
   });
+
+  if (shouldPreserveThrottleQuotes(market, currentOrders, quotes, quoteBudgetUsd, nextState, nowMs)) {
+    return getCurrentMarketOrders(currentOrders, market.id);
+  }
 
   if (!quotes.canQuote || (quotes.bidSizeUsd <= 0 && quotes.askSizeUsd <= 0)) {
     return [];
@@ -913,6 +963,8 @@ export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
           tickSize: market.tickSize,
           bestBid: market.bestBid,
           bestAsk: market.bestAsk,
+          bidBook: market.bidBook,
+          askBook: market.askBook,
           aggregateNetInventoryUsd,
           aggregateNetInventoryCapUsd,
           quoteBudgetUsd: input.quoteBudgetUsd

@@ -221,10 +221,10 @@ describe("runRuntimeCycle", () => {
     });
 
     expect(result.marketPlans).toHaveLength(1);
-    expect(result.marketPlans[0]?.nextState).toBe("Pause");
+    expect(result.marketPlans[0]?.nextState).toBe("Throttle");
   });
 
-  it("does not throttle quiet markets just because quote churn is high", () => {
+  it("pauses quiet markets once quote churn stays high without real trade activity", () => {
     const result = runRuntimeCycle({
       mode: "shadow",
       markets: [
@@ -261,7 +261,7 @@ describe("runRuntimeCycle", () => {
       }
     });
 
-    expect(result.marketPlans[0]?.nextState).toBe("Quote");
+    expect(result.marketPlans[0]?.nextState).toBe("Pause");
   });
 
   it("switches to emergency flatten on hard stop", () => {
@@ -361,7 +361,7 @@ describe("runRuntimeCycle", () => {
       {
         marketId: 10,
         side: "ask",
-        price: 0.442,
+        price: 0.46,
         sizeUsd: 4
       }
     ]);
@@ -400,14 +400,14 @@ describe("runRuntimeCycle", () => {
           id: "bid-1",
           marketId: 10,
           side: "bid",
-          price: 0.437,
+          price: 0.439,
           sizeUsd: 4
         },
         {
           id: "ask-1",
           marketId: 10,
           side: "ask",
-          price: 0.443,
+          price: 0.441,
           sizeUsd: 4
         }
       ],
@@ -424,6 +424,88 @@ describe("runRuntimeCycle", () => {
     expect(result.marketPlans[0]?.nextState).toBe("Throttle");
     expect(result.orderDiff.create).toEqual([]);
     expect(result.orderDiff.cancel).toEqual([]);
+  });
+
+  it("reprices throttle quotes immediately when the held orders fall outside the current top-two candidates", () => {
+    const result = runRuntimeCycle({
+      mode: "shadow",
+      markets: [
+        {
+          id: 10,
+          hoursToResolution: 96,
+          mid: 0.5,
+          spread: 0.002,
+          spreadThreshold: 0.06,
+          hasTwoSidedBook: true,
+          volume24hUsd: 18000,
+          isBoosted: true,
+          isVisible: true,
+          tradingStatus: "OPEN",
+          marketVariant: "DEFAULT",
+          isToxic: false,
+          currentState: "Throttle",
+          inventoryUsd: 0,
+          maxInventoryUsd: 15,
+          tickSize: 0.001,
+          oneSidedFill: false,
+          quoteCountSinceFill: 6,
+          marketTradeRatePerMinute: 1,
+          touchMoveRatePerMinute: 1,
+          lastQuoteUpdateAtMs: 10_000,
+          bidBook: [
+            { price: 0.499, size: 40 },
+            { price: 0.498, size: 8 }
+          ],
+          askBook: [
+            { price: 0.501, size: 40 },
+            { price: 0.502, size: 8 }
+          ],
+          bestBid: 0.499,
+          bestAsk: 0.501
+        }
+      ],
+      currentOrders: [
+        {
+          id: "bid-1",
+          marketId: 10,
+          side: "bid",
+          price: 0.495,
+          sizeUsd: 4
+        },
+        {
+          id: "ask-1",
+          marketId: 10,
+          side: "ask",
+          price: 0.505,
+          sizeUsd: 4
+        }
+      ],
+      riskInput: {
+        flattenPnlPct: -0.001,
+        peakDrawdownPct: -0.001,
+        aggregateNetInventoryUsd: 0,
+        aggregateNetInventoryCapUsd: 45,
+        minutesToExit: 180
+      },
+      nowMs: 20_000
+    });
+
+    expect(result.marketPlans[0]?.nextState).toBe("Throttle");
+    expect(result.orderDiff.cancel.map((order) => order.id).sort()).toEqual(["ask-1", "bid-1"]);
+    expect(result.orderDiff.create).toEqual([
+      {
+        marketId: 10,
+        side: "bid",
+        price: 0.499,
+        sizeUsd: 4
+      },
+      {
+        marketId: 10,
+        side: "ask",
+        price: 0.501,
+        sizeUsd: 4
+      }
+    ]);
   });
 });
 

@@ -29,7 +29,7 @@ function hasReachedExitWindow(input: MarketStateInput): boolean {
 }
 
 function hasExceededInventoryLimit(input: MarketStateInput): boolean {
-  return Math.abs(input.inventoryUsd) >= input.maxInventoryUsd * 0.85;
+  return Math.abs(input.inventoryUsd) >= input.maxInventoryUsd * 0.6;
 }
 
 function canonicalizeState(state: MarketState): Exclude<
@@ -115,7 +115,11 @@ export function nextMarketState(
           break;
 
         case "Protect":
-          if (!input.isToxic && !oneSidedPressure && input.inventoryUsd === 0) {
+          if (
+            !input.isToxic &&
+            !oneSidedPressure &&
+            Math.abs(input.inventoryUsd) <= input.maxInventoryUsd * 0.15
+          ) {
             nextState = "Quote";
           } else {
             nextState = "Protect";

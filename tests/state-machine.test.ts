@@ -54,14 +54,31 @@ describe("nextMarketState", () => {
     expect(next).toBe("Protect");
   });
 
-  it("moves protect markets back into quote once the book normalizes", () => {
+  it("moves quote markets into protect once inventory reaches 60% of the per-market cap", () => {
+    const next = nextMarketState("Quote", {
+      oneSidedFill: false,
+      hasOneSidedBook: false,
+      quoteToFillRatioHigh: false,
+      shouldPause: false,
+      isToxic: false,
+      inventoryUsd: 9,
+      maxInventoryUsd: 15,
+      minutesToExit: 180,
+      riskMode: "Normal",
+      isEligible: true
+    });
+
+    expect(next).toBe("Protect");
+  });
+
+  it("moves protect markets back into quote once inventory and the book normalize", () => {
     const next = nextMarketState("Protect", {
       oneSidedFill: false,
       hasOneSidedBook: false,
       quoteToFillRatioHigh: false,
       shouldPause: false,
       isToxic: false,
-      inventoryUsd: 0,
+      inventoryUsd: 2,
       maxInventoryUsd: 15,
       minutesToExit: 180,
       riskMode: "Normal",
