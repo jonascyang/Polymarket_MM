@@ -53,14 +53,18 @@ function ceilToTick(value: number, tickSize: number): number {
   return Math.ceil(value / tickSize) * tickSize;
 }
 
-function getBaseHalfSpread(mode: QuoteMode, tickSize: number): number {
+function getBaseHalfSpread(
+  mode: QuoteMode,
+  tickSize: number,
+  inventoryUsd: number
+): number {
   switch (mode) {
     case "Quote":
     case "Drain":
     case "Throttle":
       return tickSize;
     case "Protect":
-      return tickSize * 2;
+      return Math.abs(inventoryUsd) <= PRICE_EPSILON ? tickSize : tickSize * 2;
     case "Pause":
     case "Stop":
       return tickSize * 8;
@@ -276,7 +280,11 @@ export function isQuotePriceCompetitive(
     return false;
   }
 
-  const baseHalfSpread = getBaseHalfSpread(input.mode, input.tickSize);
+  const baseHalfSpread = getBaseHalfSpread(
+    input.mode,
+    input.tickSize,
+    input.inventoryUsd
+  );
   const inventoryRatio = clamp(input.inventoryUsd / input.maxInventoryUsd, -1, 1);
   const reservationPrice = clamp(input.fairValue - inventoryRatio * baseHalfSpread, 0, 1);
   const fallbackBid = clamp(
@@ -318,7 +326,11 @@ export function isQuotePriceCompetitive(
 }
 
 export function buildQuotes(input: BuildQuotesInput): QuotePlan {
-  const baseHalfSpread = getBaseHalfSpread(input.mode, input.tickSize);
+  const baseHalfSpread = getBaseHalfSpread(
+    input.mode,
+    input.tickSize,
+    input.inventoryUsd
+  );
   const inventoryRatio = clamp(input.inventoryUsd / input.maxInventoryUsd, -1, 1);
   const reservationPrice = clamp(input.fairValue - inventoryRatio * baseHalfSpread, 0, 1);
   const { bidEnabled, askEnabled } = getQuoteSideAvailability(input);

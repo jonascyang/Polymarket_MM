@@ -17,6 +17,45 @@ import {
 } from "../src/runtime/runtime";
 import { openAnalyticsStore } from "../src/storage/sqlite";
 
+function makeActiveRuntimeMarket(
+  id: number,
+  overrides: Partial<RuntimeMarketInput> = {}
+): RuntimeMarketInput {
+  return {
+    id,
+    hoursToResolution: 96,
+    mid: 0.5,
+    spread: 0.002,
+    spreadThreshold: 0.06,
+    hasTwoSidedBook: true,
+    volume24hUsd: 18000,
+    isBoosted: false,
+    isVisible: true,
+    tradingStatus: "OPEN",
+    marketVariant: "DEFAULT",
+    isToxic: false,
+    currentState: "Observe",
+    inventoryUsd: 0,
+    maxInventoryUsd: 15,
+    tickSize: 0.001,
+    oneSidedFill: false,
+    marketPool: "core_sports",
+    whitelistTier: "active",
+    marketHealth: "active-safe",
+    bestBid: 0.499,
+    bestAsk: 0.501,
+    bidBook: [
+      { price: 0.499, size: 1000 },
+      { price: 0.498, size: 1000 }
+    ],
+    askBook: [
+      { price: 0.501, size: 1000 },
+      { price: 0.502, size: 1000 }
+    ],
+    ...overrides
+  };
+}
+
 describe("getExecutionPolicy", () => {
   it("disables real order placement in shadow mode", () => {
     expect(getExecutionPolicy("shadow").placeOrders).toBe(false);
@@ -139,8 +178,8 @@ describe("runRuntimeCycle", () => {
     expect(result.risk.mode).toBe("Normal");
     expect(result.marketPlans.map((plan) => [plan.marketId, plan.nextState])).toEqual([
       [10, "Quote"],
-      [11, "Protect"],
-      [12, "Protect"]
+      [11, "Quote"],
+      [12, "Quote"]
     ]);
     expect(result.orderDiff.create).toHaveLength(6);
   });
@@ -390,6 +429,178 @@ describe("runRuntimeCycle", () => {
     });
 
     expect(result.marketPlans[0]?.nextState).toBe("Pause");
+  });
+
+  it("backfills paused or zero-sized active slots with the next eligible markets", () => {
+    const result = runRuntimeCycle({
+      mode: "shadow",
+      markets: [
+        makeActiveRuntimeMarket(1469, {
+          mid: 0.3995,
+          bestBid: 0.399,
+          bestAsk: 0.4,
+          bidBook: [
+            { price: 0.399, size: 1000 },
+            { price: 0.398, size: 1000 }
+          ],
+          askBook: [
+            { price: 0.4, size: 1000 },
+            { price: 0.401, size: 1000 }
+          ]
+        }),
+        makeActiveRuntimeMarket(1518, {
+          mid: 0.1575,
+          bestBid: 0.157,
+          bestAsk: 0.158,
+          bidBook: [
+            { price: 0.157, size: 1000 },
+            { price: 0.156, size: 1000 }
+          ],
+          askBook: [
+            { price: 0.158, size: 1000 },
+            { price: 0.159, size: 1000 }
+          ],
+          currentState: "Quote",
+          quoteCountSinceFill: 12,
+          marketTradeRatePerMinute: 0,
+          touchMoveRatePerMinute: 0
+        }),
+        makeActiveRuntimeMarket(991, {
+          mid: 0.8335,
+          bestBid: 0.817,
+          bestAsk: 0.82,
+          bidBook: [
+            { price: 0.817, size: 1000 },
+            { price: 0.816, size: 1000 }
+          ],
+          askBook: [
+            { price: 0.82, size: 1000 },
+            { price: 0.821, size: 1000 }
+          ],
+          currentState: "Protect",
+          inventoryUsd: 8,
+          marketPool: "satellite_token",
+          whitelistTier: "active"
+        }),
+        makeActiveRuntimeMarket(933, {
+          mid: 0.3595,
+          bestBid: 0.359,
+          bestAsk: 0.36,
+          bidBook: [
+            { price: 0.359, size: 1000 },
+            { price: 0.358, size: 1000 }
+          ],
+          askBook: [
+            { price: 0.36, size: 1000 },
+            { price: 0.361, size: 1000 }
+          ],
+          marketPool: "satellite_token",
+          whitelistTier: "active"
+        }),
+        makeActiveRuntimeMarket(1520, {
+          mid: 0.1285,
+          bestBid: 0.128,
+          bestAsk: 0.129,
+          bidBook: [
+            { price: 0.128, size: 1000 },
+            { price: 0.127, size: 1000 }
+          ],
+          askBook: [
+            { price: 0.129, size: 1000 },
+            { price: 0.13, size: 1000 }
+          ]
+        })
+      ],
+      currentOrders: [],
+      riskInput: {
+        flattenPnlPct: -0.001,
+        peakDrawdownPct: -0.001,
+        aggregateNetInventoryUsd: 0,
+        aggregateNetInventoryCapUsd: 45,
+        minutesToExit: 180
+      }
+    });
+
+    const quotedMarketIds = [
+      ...new Set(result.orderDiff.create.map((order) => order.marketId))
+    ];
+
+    expect(quotedMarketIds.sort((left, right) => left - right)).toEqual([933, 1469, 1520]);
+    expect(result.marketPlans.some((plan) => plan.marketId === 991)).toBe(true);
+  });
+
+  it("targets 80%-90% portfolio utilization when three quoteable markets are available", () => {
+    const result = runRuntimeCycle({
+      mode: "shadow",
+      markets: [
+        makeActiveRuntimeMarket(1469, {
+          mid: 0.3995,
+          bestBid: 0.399,
+          bestAsk: 0.4,
+          bidBook: [
+            { price: 0.399, size: 10000 },
+            { price: 0.398, size: 10000 }
+          ],
+          askBook: [
+            { price: 0.4, size: 10000 },
+            { price: 0.401, size: 10000 }
+          ]
+        }),
+        makeActiveRuntimeMarket(1518, {
+          mid: 0.1575,
+          bestBid: 0.157,
+          bestAsk: 0.158,
+          bidBook: [
+            { price: 0.157, size: 10000 },
+            { price: 0.156, size: 10000 }
+          ],
+          askBook: [
+            { price: 0.158, size: 10000 },
+            { price: 0.159, size: 10000 }
+          ]
+        }),
+        makeActiveRuntimeMarket(933, {
+          mid: 0.3595,
+          bestBid: 0.359,
+          bestAsk: 0.36,
+          bidBook: [
+            { price: 0.359, size: 10000 },
+            { price: 0.358, size: 10000 }
+          ],
+          askBook: [
+            { price: 0.36, size: 10000 },
+            { price: 0.361, size: 10000 }
+          ],
+          marketPool: "satellite_token",
+          whitelistTier: "active"
+        })
+      ],
+      currentOrders: [],
+      privateState: {
+        bearerTokenPresent: true,
+        account: null,
+        openOrders: [],
+        normalizedOpenOrders: [],
+        positions: [],
+        inventoryByMarket: {},
+        hasUnnormalizedOpenOrders: false
+      },
+      riskInput: {
+        flattenPnlPct: -0.001,
+        peakDrawdownPct: -0.001,
+        aggregateNetInventoryUsd: 0,
+        aggregateNetInventoryCapUsd: 45,
+        minutesToExit: 180
+      }
+    });
+
+    const totalCreateSizeUsd = result.orderDiff.create.reduce(
+      (sum, order) => sum + order.sizeUsd,
+      0
+    );
+
+    expect(totalCreateSizeUsd).toBeGreaterThanOrEqual(80);
+    expect(totalCreateSizeUsd).toBeLessThanOrEqual(90);
   });
 
   it("switches to emergency flatten on hard stop", () => {
@@ -783,6 +994,96 @@ describe("runRuntimeCycle", () => {
         marketId: 10,
         side: "ask",
         price: 0.504,
+        sizeUsd: 8
+      }
+    ]);
+  });
+
+  it("moves a live-like protect market with positive inventory into drain and posts the break-even ask", () => {
+    const result = runRuntimeCycle({
+      mode: "live",
+      markets: [
+        {
+          id: 991,
+          hoursToResolution: 999,
+          mid: 0.8335,
+          spread: 0.033,
+          spreadThreshold: 0.06,
+          hasTwoSidedBook: true,
+          volume24hUsd: 259057.07,
+          isBoosted: false,
+          isVisible: true,
+          tradingStatus: "OPEN",
+          marketVariant: "DEFAULT",
+          marketPool: "satellite_token",
+          whitelistTier: "active",
+          isToxic: false,
+          currentState: "Protect",
+          inventoryUsd: 6.759999999999998,
+          maxInventoryUsd: 15,
+          tickSize: 0.001,
+          oneSidedFill: false,
+          quoteCountSinceFill: 0,
+          marketTradeRatePerMinute: 0.4,
+          touchMoveRatePerMinute: 0,
+          oneSidedRatio: 0,
+          marketHealth: "active-risky",
+          bestBid: 0.817,
+          bestAsk: 0.85,
+          bidBook: [
+            { price: 0.817, size: 100 },
+            { price: 0.816, size: 7476.78 }
+          ],
+          askBook: [
+            { price: 0.85, size: 446.6554 },
+            { price: 0.852, size: 105 }
+          ]
+        }
+      ],
+      currentOrders: [],
+      privateState: {
+        bearerTokenPresent: true,
+        account: null,
+        openOrders: [],
+        normalizedOpenOrders: [],
+        positions: [
+          {
+            id: "yes",
+            market: { id: 991 },
+            outcome: { name: "Yes", indexSet: 1, onChainId: "yes" },
+            amount: "25393976352941176471",
+            valueUsd: "19.99",
+            averageBuyPriceUsd: "0.8627",
+            pnlUsd: "-1.92"
+          },
+          {
+            id: "no",
+            market: { id: 991 },
+            outcome: { name: "No", indexSet: 2, onChainId: "no" },
+            amount: "65843000000000000000",
+            valueUsd: "13.23",
+            averageBuyPriceUsd: "0.1215",
+            pnlUsd: "5.23"
+          }
+        ],
+        inventoryByMarket: { 991: 6.759999999999998 },
+        hasUnnormalizedOpenOrders: false
+      },
+      riskInput: {
+        flattenPnlPct: -0.001,
+        peakDrawdownPct: -0.001,
+        aggregateNetInventoryUsd: 6.759999999999998,
+        aggregateNetInventoryCapUsd: 45,
+        minutesToExit: 999
+      }
+    });
+
+    expect(result.marketPlans[0]?.nextState).toBe("Drain");
+    expect(result.orderDiff.create).toEqual([
+      {
+        marketId: 991,
+        side: "ask",
+        price: 0.864,
         sizeUsd: 8
       }
     ]);

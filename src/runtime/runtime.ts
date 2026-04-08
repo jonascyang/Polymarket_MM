@@ -763,6 +763,7 @@ const PAUSE_TOUCH_RATE_THRESHOLD = 0.2;
 const THROTTLE_MIN_REFRESH_INTERVAL_MS = 30_000;
 const QUOTE_SIZE_MATCH_TOLERANCE = 0.001;
 const PORTFOLIO_CAPITAL_USD = 100;
+const TARGET_PORTFOLIO_UTILIZATION_RATIO = 0.85;
 const LOW_UTILIZATION_SIZE_MULTIPLIER = 2;
 const MID_UTILIZATION_SIZE_MULTIPLIER = 1.5;
 const HIGH_UTILIZATION_SIZE_MULTIPLIER = 0.75;
@@ -789,15 +790,23 @@ function shouldPauseMarket(market: RuntimeMarketInput): boolean {
   );
 }
 
+function getPositionNotionalUsd(privateState?: RuntimePrivateState): number {
+  if (!privateState) {
+    return 0;
+  }
+
+  return privateState.positions.reduce(
+    (sum, position) => sum + Math.abs(parseUsd(position.valueUsd)),
+    0
+  );
+}
+
 function getPortfolioNotionalUsd(privateState?: RuntimePrivateState): number {
   if (!privateState) {
     return 0;
   }
 
-  const positionNotionalUsd = privateState.positions.reduce(
-    (sum, position) => sum + Math.abs(parseUsd(position.valueUsd)),
-    0
-  );
+  const positionNotionalUsd = getPositionNotionalUsd(privateState);
   const openOrderNotionalUsd = privateState.normalizedOpenOrders.reduce(
     (sum, order) => sum + Math.abs(order.sizeUsd),
     0
@@ -921,6 +930,114 @@ function resolveQuoteMode(state: MarketState): QuoteMode | null {
   }
 }
 
+function resolveNextStateForMarket(
+  market: RuntimeMarketInput,
+  selectedMode: "Quote" | "Protect",
+  risk: RiskEvaluation,
+  input: RuntimeCycleInput
+): MarketState {
+  let nextState: MarketState;
+
+  if (market.currentState === "Observe") {
+    nextState = risk.mode === "SoftStop"
+      ? "Observe"
+      : selectedMode === "Protect" && market.inventoryUsd === 0
+        ? "Quote"
+        : selectedMode;
+  } else {
+    nextState = nextMarketState(market.currentState, {
+      oneSidedFill: market.oneSidedFill,
+      hasOneSidedBook: !market.hasTwoSidedBook,
+      quoteToFillRatioHigh: hasHighQuoteToFillRatio(market),
+      shouldPause: shouldPauseMarket(market),
+      isToxic: market.isToxic,
+      inventoryUsd: market.inventoryUsd,
+      maxInventoryUsd: market.maxInventoryUsd,
+      minutesToExit: input.riskInput.minutesToExit ?? Number.POSITIVE_INFINITY,
+      riskMode: risk.mode,
+      isEligible:
+        market.marketHealth !== "inactive-or-toxic"
+    });
+
+    if (
+      (nextState === "Pause" || nextState === "Protect") &&
+      risk.mode === "Normal" &&
+      canDrainInventory(market, input.privateState)
+    ) {
+      nextState = "Drain";
+    }
+  }
+
+  return nextState;
+}
+
+function buildMarketPlan(
+  market: RuntimeMarketInput,
+  selectedMode: "Quote" | "Protect",
+  risk: RiskEvaluation,
+  input: RuntimeCycleInput,
+  aggregateNetInventoryUsd: number | undefined,
+  aggregateNetInventoryCapUsd: number | undefined,
+  sizeScale = 1
+): RuntimeMarketPlan {
+  const nextState = resolveNextStateForMarket(market, selectedMode, risk, input);
+  const quoteMode = resolveQuoteMode(nextState);
+  const utilizationMultiplier = getPortfolioUtilizationMultiplier(input.privateState) * sizeScale;
+  const quotes = quoteMode !== null
+    ? buildQuotes({
+        mode: quoteMode,
+        fairValue: market.mid,
+        inventoryUsd: market.inventoryUsd,
+        maxInventoryUsd: market.maxInventoryUsd,
+        tickSize: market.tickSize,
+        bestBid: market.bestBid,
+        bestAsk: market.bestAsk,
+        bidBook: market.bidBook,
+        askBook: market.askBook,
+        scoreQuoteSizeUsd:
+          (quoteMode === "Quote" || quoteMode === "Drain" ? 6 : 4) *
+          utilizationMultiplier,
+        defendQuoteSizeUsd: 4 * utilizationMultiplier,
+        ...getDrainPriceBounds(market, input.privateState),
+        aggregateNetInventoryUsd,
+        aggregateNetInventoryCapUsd,
+        quoteBudgetUsd: input.quoteBudgetUsd
+      })
+    : null;
+
+  return {
+    marketId: market.id,
+    selectedMode: nextState === "Drain" ? "Drain" : selectedMode,
+    nextState,
+    quotes
+  };
+}
+
+function getTargetQuoteSizeScale(
+  quotePlans: RuntimeMarketPlan[],
+  privateState?: RuntimePrivateState
+): number {
+  if (quotePlans.length < 3) {
+    return 1;
+  }
+
+  const currentPositionNotionalUsd = getPositionNotionalUsd(privateState);
+  const targetOpenOrderNotionalUsd = Math.max(
+    PORTFOLIO_CAPITAL_USD * TARGET_PORTFOLIO_UTILIZATION_RATIO - currentPositionNotionalUsd,
+    0
+  );
+  const currentQuotedNotionalUsd = quotePlans.reduce(
+    (sum, plan) => sum + (plan.quotes?.bidSizeUsd ?? 0) + (plan.quotes?.askSizeUsd ?? 0),
+    0
+  );
+
+  if (currentQuotedNotionalUsd <= 0 || targetOpenOrderNotionalUsd <= currentQuotedNotionalUsd) {
+    return 1;
+  }
+
+  return targetOpenOrderNotionalUsd / currentQuotedNotionalUsd;
+}
+
 function shouldPreserveThrottleQuotes(
   market: RuntimeMarketInput,
   currentOrders: ManagedOrder[],
@@ -979,39 +1096,17 @@ function getCurrentMarketOrders(
   return currentOrders.filter((order) => order.marketId === marketId);
 }
 
-function buildQuoteOrders(
+function buildQuoteOrdersFromPlan(
   market: RuntimeMarketInput,
   nextState: MarketState,
   currentOrders: ManagedOrder[],
-  privateState: RuntimePrivateState | undefined,
+  quotes: QuotePlan | null,
   nowMs: number,
-  aggregateNetInventoryUsd: number | undefined,
-  aggregateNetInventoryCapUsd: number | undefined,
   quoteBudgetUsd: number | undefined
 ): ManagedOrder[] {
-  const mode = resolveQuoteMode(nextState);
-
-  if (mode === null) {
+  if (quotes === null) {
     return [];
   }
-
-  const quotes = buildQuotes({
-    mode,
-    fairValue: market.mid,
-    inventoryUsd: market.inventoryUsd,
-    maxInventoryUsd: market.maxInventoryUsd,
-    tickSize: market.tickSize,
-    bestBid: market.bestBid,
-    bestAsk: market.bestAsk,
-    bidBook: market.bidBook,
-    askBook: market.askBook,
-    scoreQuoteSizeUsd: (mode === "Quote" || mode === "Drain" ? 6 : 4) * getPortfolioUtilizationMultiplier(privateState),
-    defendQuoteSizeUsd: 4 * getPortfolioUtilizationMultiplier(privateState),
-    ...getDrainPriceBounds(market, privateState),
-    aggregateNetInventoryUsd,
-    aggregateNetInventoryCapUsd,
-    quoteBudgetUsd
-  });
 
   if (shouldPreserveThrottleQuotes(market, currentOrders, quotes, quoteBudgetUsd, nextState, nowMs)) {
     return getCurrentMarketOrders(currentOrders, market.id);
@@ -1042,6 +1137,14 @@ function buildQuoteOrders(
   }
 
   return orders;
+}
+
+function hasActiveQuotes(plan: RuntimeMarketPlan): boolean {
+  return (
+    plan.quotes !== null &&
+    plan.quotes.canQuote &&
+    (plan.quotes.bidSizeUsd > 0 || plan.quotes.askSizeUsd > 0)
+  );
 }
 
 export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
@@ -1090,87 +1193,166 @@ export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
   }
 
   const selection = selectActiveMarkets(input.markets);
-  const selectedById = new Map(selection.active.map((market) => [market.id, market]));
-  const marketPlans: RuntimeMarketPlan[] = [];
-  const targetOrders: ManagedOrder[] = [];
-
-  for (const selectedMarket of selection.active) {
-    const market = input.markets.find((candidate) => candidate.id === selectedMarket.id);
-
-    if (!market) {
-      continue;
+  const marketsById = new Map(input.markets.map((market) => [market.id, market]));
+  const slotModes: Array<"Quote" | "Protect"> = ["Quote", "Protect", "Protect"];
+  const seedIds = new Set(selection.active.map((market) => market.id));
+  const alternateCandidates = selection.ranked.filter((market) => !seedIds.has(market.id));
+  const seedEntries: Array<{
+    market: RuntimeMarketInput;
+    targetMode: "Quote" | "Protect";
+    plan: RuntimeMarketPlan;
+  }> = [];
+  const quotedEntries: Array<{
+    market: RuntimeMarketInput;
+    targetMode: "Quote" | "Protect";
+    plan: RuntimeMarketPlan;
+  }> = [];
+  const managedEntriesById = new Map<
+    number,
+    {
+      market: RuntimeMarketInput;
+      targetMode: "Quote" | "Protect";
+      plan: RuntimeMarketPlan;
     }
+  >();
+  let alternateIndex = 0;
 
-    let nextState: MarketState;
+  for (let slotIndex = 0; slotIndex < slotModes.length; slotIndex += 1) {
+    const targetMode = slotModes[slotIndex]!;
+    const seedSelection = selection.active[slotIndex];
+    const seedMarket = seedSelection ? marketsById.get(seedSelection.id) : undefined;
 
-    if (market.currentState === "Observe") {
-      nextState = risk.mode === "SoftStop" ? "Observe" : selectedMarket.targetMode;
-    } else {
-      nextState = nextMarketState(market.currentState, {
-        oneSidedFill: market.oneSidedFill,
-        hasOneSidedBook: !market.hasTwoSidedBook,
-        quoteToFillRatioHigh: hasHighQuoteToFillRatio(market),
-        shouldPause: shouldPauseMarket(market),
-        isToxic: market.isToxic,
-        inventoryUsd: market.inventoryUsd,
-        maxInventoryUsd: market.maxInventoryUsd,
-        minutesToExit: input.riskInput.minutesToExit ?? Number.POSITIVE_INFINITY,
-        riskMode: risk.mode,
-        isEligible:
-          selectedById.has(market.id) &&
-          market.marketHealth !== "inactive-or-toxic"
+    if (seedMarket) {
+      const seedPlan = buildMarketPlan(
+        seedMarket,
+        targetMode,
+        risk,
+        input,
+        aggregateNetInventoryUsd,
+        aggregateNetInventoryCapUsd
+      );
+      seedEntries.push({
+        market: seedMarket,
+        targetMode,
+        plan: seedPlan
       });
 
-      if (
-        (nextState === "Pause" || nextState === "Protect") &&
-        risk.mode === "Normal" &&
-        canDrainInventory(market, input.privateState)
-      ) {
-        nextState = "Drain";
+      if (hasActiveQuotes(seedPlan)) {
+        quotedEntries.push({
+          market: seedMarket,
+          targetMode,
+          plan: seedPlan
+        });
+        continue;
+      }
+
+      if (seedMarket.inventoryUsd !== 0) {
+        managedEntriesById.set(seedMarket.id, {
+          market: seedMarket,
+          targetMode,
+          plan: seedPlan
+        });
       }
     }
 
-    const quoteMode = resolveQuoteMode(nextState);
-    const quotes = quoteMode !== null
-      ? buildQuotes({
-          mode: quoteMode,
-          fairValue: market.mid,
-          inventoryUsd: market.inventoryUsd,
-          maxInventoryUsd: market.maxInventoryUsd,
-          tickSize: market.tickSize,
-          bestBid: market.bestBid,
-          bestAsk: market.bestAsk,
-          bidBook: market.bidBook,
-          askBook: market.askBook,
-          scoreQuoteSizeUsd: (quoteMode === "Quote" || quoteMode === "Drain" ? 6 : 4) * getPortfolioUtilizationMultiplier(input.privateState),
-          defendQuoteSizeUsd: 4 * getPortfolioUtilizationMultiplier(input.privateState),
-          ...getDrainPriceBounds(market, input.privateState),
+    while (alternateIndex < alternateCandidates.length) {
+      const alternate = alternateCandidates[alternateIndex++];
+
+      if (!alternate) {
+        break;
+      }
+
+      const market = marketsById.get(alternate.id);
+
+      if (!market) {
+        continue;
+      }
+
+      const alternatePlan = buildMarketPlan(
+        market,
+        targetMode,
+        risk,
+        input,
+        aggregateNetInventoryUsd,
+        aggregateNetInventoryCapUsd
+      );
+
+      if (hasActiveQuotes(alternatePlan)) {
+        quotedEntries.push({
+          market,
+          targetMode,
+          plan: alternatePlan
+        });
+        break;
+      }
+
+      if (market.inventoryUsd !== 0) {
+        managedEntriesById.set(market.id, {
+          market,
+          targetMode,
+          plan: alternatePlan
+        });
+      }
+    }
+  }
+
+  const sizeScale = getTargetQuoteSizeScale(
+    quotedEntries.map((entry) => entry.plan),
+    input.privateState
+  );
+
+  const scaledQuotedEntries = sizeScale === 1
+    ? quotedEntries
+    : quotedEntries.map((entry) => ({
+        ...entry,
+        plan: buildMarketPlan(
+          entry.market,
+          entry.targetMode,
+          risk,
+          input,
           aggregateNetInventoryUsd,
           aggregateNetInventoryCapUsd,
-          quoteBudgetUsd: input.quoteBudgetUsd
-        })
-      : null;
+          sizeScale
+        )
+      }));
+  const scaledQuotedById = new Map(
+    scaledQuotedEntries.map((entry) => [entry.market.id, entry] as const)
+  );
+  const finalEntriesMap = new Map<number, {
+    market: RuntimeMarketInput;
+    targetMode: "Quote" | "Protect";
+    plan: RuntimeMarketPlan;
+  }>();
 
-    marketPlans.push({
-      marketId: market.id,
-      selectedMode: nextState === "Drain" ? "Drain" : selectedMarket.targetMode,
-      nextState,
-      quotes
-    });
-
-    targetOrders.push(
-      ...buildQuoteOrders(
-        market,
-        nextState,
-        input.currentOrders,
-        input.privateState,
-        nowMs,
-        aggregateNetInventoryUsd,
-        aggregateNetInventoryCapUsd,
-        input.quoteBudgetUsd
-      )
+  for (const seedEntry of seedEntries) {
+    finalEntriesMap.set(
+      seedEntry.market.id,
+      scaledQuotedById.get(seedEntry.market.id) ?? seedEntry
     );
   }
+
+  for (const entry of scaledQuotedEntries) {
+    finalEntriesMap.set(entry.market.id, entry);
+  }
+
+  for (const entry of managedEntriesById.values()) {
+    if (!finalEntriesMap.has(entry.market.id)) {
+      finalEntriesMap.set(entry.market.id, entry);
+    }
+  }
+
+  const finalEntries = [...finalEntriesMap.values()];
+  const marketPlans = finalEntries.map((entry) => entry.plan);
+  const targetOrders = finalEntries.flatMap((entry) =>
+    buildQuoteOrdersFromPlan(
+      entry.market,
+      entry.plan.nextState,
+      input.currentOrders,
+      entry.plan.quotes,
+      nowMs,
+      input.quoteBudgetUsd
+    )
+  );
 
   const rawOrderDiff = diffOrders({
     current: input.currentOrders,

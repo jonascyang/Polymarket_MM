@@ -8,6 +8,7 @@ export type ActiveMarket = MarketCandidate & {
 
 export type MarketSelectionResult = {
   active: ActiveMarket[];
+  ranked: MarketCandidate[];
 };
 
 function getMarketPoolPriority(market: MarketCandidate): number {
@@ -116,6 +117,7 @@ export function selectActiveMarkets(markets: MarketCandidate[]): MarketSelection
     active: selectedMarkets.map((market, index) => ({
       ...market,
       targetMode: index === 0 ? "Quote" : "Protect"
-    }))
+    })),
+    ranked: eligibleMarkets
   };
 }

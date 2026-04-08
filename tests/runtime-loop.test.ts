@@ -223,8 +223,8 @@ describe("createRuntimeLoop", () => {
 
     expect(snapshot.markets.map((market) => [market.id, market.currentState])).toEqual([
       [PRIMARY_MARKET_ID, "Quote"],
-      [SECONDARY_MARKET_ID, "Protect"],
-      [TERTIARY_MARKET_ID, "Protect"]
+      [SECONDARY_MARKET_ID, "Quote"],
+      [TERTIARY_MARKET_ID, "Quote"]
     ]);
   });
 
@@ -995,9 +995,9 @@ describe("createRuntimeLoop", () => {
     expect(portfolioSnapshot.net_inventory_usd).toBe(0);
     expect(JSON.parse(portfolioSnapshot.payload_json).aggregateNetInventoryUsd).toBe(0);
     expect(marketStates).toEqual([
-      { market_id: TERTIARY_MARKET_ID, state: "Protect" },
+      { market_id: TERTIARY_MARKET_ID, state: "Quote" },
       { market_id: PRIMARY_MARKET_ID, state: "Quote" },
-      { market_id: SECONDARY_MARKET_ID, state: "Protect" }
+      { market_id: SECONDARY_MARKET_ID, state: "Quote" }
     ]);
     expect(
       marketRegimes.map((row) => ({
@@ -1010,10 +1010,10 @@ describe("createRuntimeLoop", () => {
     ).toEqual([
       {
         market_id: TERTIARY_MARKET_ID,
-        current_state: "Protect",
+        current_state: "Quote",
         is_boosted: 0,
         volume24h_usd: 12000,
-        marketHealth: "active-risky"
+        marketHealth: "active-safe"
       },
       {
         market_id: PRIMARY_MARKET_ID,
@@ -1024,10 +1024,10 @@ describe("createRuntimeLoop", () => {
       },
       {
         market_id: SECONDARY_MARKET_ID,
-        current_state: "Protect",
+        current_state: "Quote",
         is_boosted: 0,
         volume24h_usd: 15000,
-        marketHealth: "active-risky"
+        marketHealth: "active-safe"
       }
     ]);
   });
