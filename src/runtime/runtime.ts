@@ -1122,7 +1122,7 @@ export function runRuntimeCycle(input: RuntimeCycleInput): RuntimeCycleResult {
       });
 
       if (
-        nextState === "Pause" &&
+        (nextState === "Pause" || nextState === "Protect") &&
         risk.mode === "Normal" &&
         canDrainInventory(market, input.privateState)
       ) {

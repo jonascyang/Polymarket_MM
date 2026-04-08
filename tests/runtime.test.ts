@@ -715,6 +715,79 @@ describe("runRuntimeCycle", () => {
     ]);
   });
 
+  it("drains an existing long inventory from protect mode even when break-even sits outside the top two asks", () => {
+    const result = runRuntimeCycle({
+      mode: "shadow",
+      markets: [
+        {
+          id: 10,
+          hoursToResolution: 96,
+          mid: 0.5,
+          spread: 0.002,
+          spreadThreshold: 0.06,
+          hasTwoSidedBook: true,
+          volume24hUsd: 18000,
+          isBoosted: true,
+          isVisible: true,
+          tradingStatus: "OPEN",
+          marketVariant: "DEFAULT",
+          isToxic: false,
+          currentState: "Protect",
+          inventoryUsd: 4,
+          maxInventoryUsd: 15,
+          tickSize: 0.001,
+          oneSidedFill: false,
+          bestBid: 0.499,
+          bestAsk: 0.501,
+          askBook: [
+            { price: 0.501, size: 40 },
+            { price: 0.502, size: 40 }
+          ],
+          marketPool: "core_sports",
+          whitelistTier: "active",
+          marketHealth: "active-safe"
+        }
+      ],
+      currentOrders: [],
+      privateState: {
+        bearerTokenPresent: true,
+        account: null,
+        openOrders: [],
+        normalizedOpenOrders: [],
+        positions: [
+          {
+            id: "position-1",
+            market: { id: 10 },
+            outcome: { name: "Yes", indexSet: 1, onChainId: "10-yes" },
+            amount: "1000000000000000000",
+            valueUsd: "4",
+            averageBuyPriceUsd: "0.503",
+            pnlUsd: "0"
+          }
+        ],
+        inventoryByMarket: { 10: 4 },
+        hasUnnormalizedOpenOrders: false
+      },
+      riskInput: {
+        flattenPnlPct: -0.001,
+        peakDrawdownPct: -0.001,
+        aggregateNetInventoryUsd: 4,
+        aggregateNetInventoryCapUsd: 45,
+        minutesToExit: 180
+      }
+    });
+
+    expect(result.marketPlans[0]?.nextState).toBe("Drain");
+    expect(result.orderDiff.create).toEqual([
+      {
+        marketId: 10,
+        side: "ask",
+        price: 0.504,
+        sizeUsd: 8
+      }
+    ]);
+  });
+
   it("keeps existing orders in place while throttle cadence blocks a refresh", () => {
     const result = runRuntimeCycle({
       mode: "shadow",
